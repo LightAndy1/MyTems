@@ -503,6 +503,13 @@ function renderStudyDesk() {
         document.createTextNode(`[${String(item.type).toUpperCase()}] ${item.text}${due} `),
         makeTimestampBtn(item.timestampSec, item.partId, item.partIndex)
       );
+      if (typeof item.confidence === 'number' && Number.isFinite(item.confidence)) {
+        const badge = document.createElement('span');
+        badge.className = 'radar-confidence-badge';
+        badge.textContent = `${Math.round(item.confidence * 100)}%`;
+        badge.title = 'Jev calibrated confidence';
+        li.append(document.createTextNode(' '), badge);
+      }
       radarList.appendChild(li);
     }
 
@@ -1141,6 +1148,7 @@ const SETTING_FIELDS = [
   'defaultCourseHint',
   'whiteboardMode',
   'whiteboardMeetings',
+  'jevEnabled',
 ];
 let modalMode = 'cloud';
 
@@ -1156,7 +1164,9 @@ function syncModeUI(mode) {
 async function openSettingsModal() {
   const s = await getSettings();
   for (const name of SETTING_FIELDS) {
-    form.elements[name].value = s[name] || '';
+    const field = form.elements[name];
+    if (field.type === 'checkbox') field.checked = Boolean(s[name]);
+    else field.value = s[name] || '';
   }
   syncModeUI(s.providerMode);
   if (!modal.open) modal.showModal();
@@ -1171,7 +1181,8 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const patch = { providerMode: modalMode };
   for (const name of SETTING_FIELDS) {
-    patch[name] = form.elements[name].value.trim();
+    const field = form.elements[name];
+    patch[name] = field.type === 'checkbox' ? field.checked : field.value.trim();
   }
   if (patch.whiteboardMode !== 'off' && chrome.permissions?.request) {
     let granted = false;

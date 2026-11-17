@@ -426,4 +426,61 @@ describe('AI pipeline & client helpers', () => {
     assert.ok(written['transcript.json']);
     assert.equal(patches.at(-1).status, 'transcribed');
   });
+
+  it('skips video slide extraction when whiteboard captures already exist in slides/', async () => {
+    let extractCalled = false;
+    const result = await runLecturePipeline({
+      lectureId: 'lec_wb',
+      deps: {
+        getLecture: async () => ({
+          id: 'lec_wb',
+          courseHint: 'Calculus',
+          hasWhiteboardCaptures: true,
+        }),
+        getSettings: async () => ({
+          providerMode: 'cloud',
+          openrouterApiKey: 'sk-test',
+          sttModel: 'openai/whisper-large-v3',
+          llmModel: 'google/gemini-2.5-flash',
+        }),
+        upsertLecture: async () => ({}),
+        readLectureJson: async (_id, name) =>
+          name === 'transcript.json'
+            ? {
+                fullText: 'Derivative of x squared',
+                segments: [{ startSec: 5, text: 'Derivative of x squared' }],
+                sttCostUsd: 0,
+              }
+            : null,
+        writeLectureJson: async () => {},
+        listDirFiles: async (_id, dir) => (dir === 'slides' ? ['001_15_wb.png'] : []),
+        readLectureFile: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }),
+        blobToDataUrl: async () => 'data:image/png;base64,AQID',
+        extractSlidesFromVideo: async () => {
+          extractCalled = true;
+          return [];
+        },
+        generateStructuredNotes: async () => ({
+          notes: {
+            summary: 'Derivatives',
+            chapters: [
+              {
+                title: 'Power Rule',
+                startSec: 0,
+                endSec: 60,
+                bullets: ['2x'],
+                formulas: ["(x^2)'=2x"],
+                slideRefs: [0],
+              },
+            ],
+            definitions: [],
+            examRadar: [],
+          },
+          costUsd: 0.001,
+        }),
+      },
+    });
+    assert.equal(extractCalled, false);
+    assert.equal(result.notes.chapters[0].formulas[0], "(x^2)'=2x");
+  });
 });

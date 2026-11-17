@@ -199,7 +199,12 @@ export async function runLecturePipeline({
 
     onStage('Extracting slides...');
     await resolvedDeps.upsertLecture({ id: lectureId, status: 'extracting_slides' });
-    if (!lecture.slidesExtracted) {
+    const existingSlideFiles = await resolvedDeps.listDirFiles(lectureId, 'slides');
+    const skipVideoSlides =
+      lecture.slidesExtracted ||
+      (lecture.hasWhiteboardCaptures && existingSlideFiles.some((f) => f.includes('_wb.')));
+
+    if (!skipVideoSlides) {
       try {
         const videoFile = await resolvedDeps.readLectureFile(lectureId, 'video.webm');
         await resolvedDeps.extractSlidesFromVideo(

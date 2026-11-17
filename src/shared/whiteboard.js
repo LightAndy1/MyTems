@@ -119,3 +119,32 @@ export async function saveWhiteboardSlide({ lectureId, filename, base64 }, write
   const bytes = base64ToUint8(base64);
   await writeFileFn(lectureId, `slides/${filename}`, bytes);
 }
+
+export function createWhiteboardTracker(lectureId, opts = {}) {
+  let seq = opts.initialSeq || 0;
+  let prevHash = opts.prevHash ?? null;
+  let lastSavedSec = opts.lastSavedSec ?? -Infinity;
+
+  return {
+    accept(targetLectureId, elapsedSec, base64) {
+      if (!targetLectureId || targetLectureId !== lectureId || !base64) return null;
+      const hash = computeFnv1aHash(base64ToUint8(base64));
+      const ok = shouldSaveWhiteboardFrame({
+        hash,
+        prevHash,
+        elapsedSinceLastSec: elapsedSec - lastSavedSec,
+        savedCount: seq,
+        minIntervalSec: opts.minIntervalSec,
+        maxCaptures: opts.maxCaptures,
+      });
+      if (!ok) return null;
+      seq += 1;
+      prevHash = hash;
+      lastSavedSec = elapsedSec;
+      return formatWhiteboardFilename(seq, elapsedSec);
+    },
+    snapshot() {
+      return { lectureId, initialSeq: seq, prevHash, lastSavedSec };
+    },
+  };
+}

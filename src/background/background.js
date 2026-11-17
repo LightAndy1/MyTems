@@ -1,11 +1,68 @@
+import { WHITEBOARD_CONFIG, WHITEBOARD_ORIGINS } from '../shared/constants.js';
 import { createLectureId, deriveLectureTitle } from '../shared/sanitize.js';
 import {
   getActiveSession,
   getLecture,
+  getSettings,
   recoverStaleRecordings,
   setActiveSession,
   upsertLecture,
 } from '../shared/storage.js';
+import { createWhiteboardTracker, shouldEnableWhiteboard } from '../shared/whiteboard.js';
+
+const WB_SESSION_KEY = 'mytems_wb_tracker';
+let wbTracker = null;
+let wbTabId = null;
+
+async function getOrRestoreTracker(lectureId) {
+  if (wbTracker && wbTracker.snapshot().lectureId === lectureId) return wbTracker;
+  const saved = (await chrome.storage.session?.get(WB_SESSION_KEY).catch(() => null))?.[WB_SESSION_KEY];
+  if (saved?.lectureId === lectureId) {
+    wbTracker = createWhiteboardTracker(lectureId, saved);
+    return wbTracker;
+  }
+  const active = await getActiveSession();
+  if (active?.lectureId === lectureId) {
+    wbTracker = createWhiteboardTracker(lectureId);
+    return wbTracker;
+  }
+  return null;
+}
+
+async function maybeAttachWhiteboard({ tabId, tabTitle, lectureId, startedAtMs, whiteboardOverride }) {
+  try {
+    const settings = await getSettings();
+    const enabled = shouldEnableWhiteboard({
+      mode: settings.whiteboardMode,
+      tabTitle,
+      filterCsv: settings.whiteboardMeetings,
+      override: whiteboardOverride ?? null,
+    });
+    if (!enabled || !tabId) return;
+
+    const granted = await chrome.permissions.contains({
+      permissions: ['scripting'],
+      origins: WHITEBOARD_ORIGINS,
+    });
+    if (!granted || !chrome.scripting?.executeScript) return;
+
+    wbTracker = createWhiteboardTracker(lectureId);
+    wbTabId = tabId;
+    await chrome.storage.session?.set({ [WB_SESSION_KEY]: wbTracker.snapshot() }).catch(() => {});
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      files: ['src/content/whiteboard-capture.js'],
+    });
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'MYTEMS_WB_START',
+      lectureId,
+      startedAtMs,
+      intervalMs: WHITEBOARD_CONFIG.INTERVAL_MS,
+    });
+  } catch (err) {
+    console.warn('Whiteboard attach skipped:', err?.message || err);
+  }
+}
 
 async function ensureOffscreen() {
   const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
@@ -24,6 +81,15 @@ async function updateBadge(recording) {
 
 async function finalizeStop(result) {
   if (!result?.lectureId) return null;
+  const active = await getActiveSession().catch(() => null);
+  const targetTabId = wbTabId || active?.tabId;
+  if (targetTabId) {
+    chrome.tabs.sendMessage(targetTabId, { type: 'MYTEMS_WB_STOP' }).catch(() => {});
+  }
+  wbTracker = null;
+  wbTabId = null;
+  await chrome.storage.session?.remove(WB_SESSION_KEY).catch(() => {});
+
   const existing = await getLecture(result.lectureId);
   const updated = await upsertLecture({
     ...(existing || { id: result.lectureId }),
@@ -37,7 +103,7 @@ async function finalizeStop(result) {
   return updated;
 }
 
-async function handleStart({ tabId, tabTitle, streamId, courseHint }) {
+async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOverride }) {
   const active = await getActiveSession();
   if (active) throw new Error('Recording already in progress');
   await ensureOffscreen();
@@ -81,6 +147,7 @@ async function handleStart({ tabId, tabTitle, streamId, courseHint }) {
     throw err;
   }
   await updateBadge(true);
+  maybeAttachWhiteboard({ tabId, tabTitle, lectureId, startedAtMs, whiteboardOverride });
   return { lectureId, title, startedAtMs };
 }
 
@@ -128,5 +195,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === 'CAPTURE_ENDED_EXTERNALLY') {
     finalizeStop(msg).catch(() => {});
+  }
+  if (msg.type === 'WHITEBOARD_FRAME') {
+    getOrRestoreTracker(msg.lectureId)
+      .then((tracker) => {
+        const filename = tracker?.accept(msg.lectureId, msg.elapsedSec, msg.base64);
+        if (!filename) return null;
+        chrome.storage.session?.set({ [WB_SESSION_KEY]: tracker.snapshot() }).catch(() => {});
+        return chrome.runtime.sendMessage({
+          type: 'OFFSCREEN_SAVE_WHITEBOARD_FRAME',
+          lectureId: msg.lectureId,
+          filename,
+          base64: msg.base64,
+        });
+      })
+      .then((resp) => {
+        if (resp?.ok) {
+          upsertLecture({ id: msg.lectureId, hasWhiteboardCaptures: true }).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }
 });

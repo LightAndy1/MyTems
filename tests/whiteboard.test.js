@@ -4,6 +4,7 @@ import {
   base64ToUint8,
   computeFnv1aHash,
   computeStrokeBounds,
+  createWhiteboardTracker,
   formatWhiteboardFilename,
   matchesWhiteboardMeeting,
   parseMeetingFilters,
@@ -127,5 +128,21 @@ describe('saveWhiteboardSlide', () => {
     assert.equal(writes[0].id, 'lec_1');
     assert.equal(writes[0].relPath, 'slides/001_12_wb.png');
     assert.deepEqual(writes[0].data, bytes);
+  });
+});
+
+describe('createWhiteboardTracker', () => {
+  it('assigns sequential filenames, deduplicates repeated frames, and enforces cap', () => {
+    const tracker = createWhiteboardTracker('lec_99', { minIntervalSec: 15, maxCaptures: 2 });
+    const imgA = uint8ToBase64(new Uint8Array([1, 2, 3]));
+    const imgB = uint8ToBase64(new Uint8Array([1, 2, 4]));
+    const imgC = uint8ToBase64(new Uint8Array([1, 2, 5]));
+
+    assert.equal(tracker.accept('lec_other', 10, imgA), null);
+    assert.equal(tracker.accept('lec_99', 10, imgA), '001_10_wb.png');
+    assert.equal(tracker.accept('lec_99', 40, imgA), null);
+    assert.equal(tracker.accept('lec_99', 18, imgB), null);
+    assert.equal(tracker.accept('lec_99', 30, imgB), '002_30_wb.png');
+    assert.equal(tracker.accept('lec_99', 60, imgC), null);
   });
 });

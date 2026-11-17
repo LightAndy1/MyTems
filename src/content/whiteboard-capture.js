@@ -109,6 +109,7 @@
 
     canvases.forEach((el, idx) => {
       const rect = el.getBoundingClientRect();
+      if (rect.width < 250 || rect.height < 250) return;
       candidates.push({
         kind: 'canvas',
         index: idx,

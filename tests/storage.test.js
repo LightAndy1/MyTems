@@ -31,6 +31,8 @@ describe('storage index and crash recovery', () => {
     const s = createStorage(makeMemoryArea());
     const initial = await s.getSettings();
     assert.equal(initial.providerMode, 'cloud');
+    assert.equal(initial.jevEnabled, false);
+    assert.equal(initial.jevModel, 'typesafe/jev-latest');
     await s.saveSettings({ providerMode: 'local', openrouterApiKey: 'sk-test' });
     const updated = await s.getSettings();
     assert.equal(updated.providerMode, 'local');

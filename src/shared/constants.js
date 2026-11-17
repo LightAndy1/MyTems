@@ -23,6 +23,8 @@ export const DEFAULT_SETTINGS = {
   defaultCourseHint: '',
   whiteboardMode: 'off',
   whiteboardMeetings: '',
+  jevEnabled: false,
+  jevModel: 'typesafe/jev-latest',
 };
 
 export const WHITEBOARD_ORIGINS = [

@@ -87,11 +87,11 @@ describe('AI pipeline & client helpers', () => {
   });
 
   it('converts blob to base64 and data URL', async () => {
-    const blob = new Blob(['hello'], { type: 'text/plain' });
+    const blob = new Blob(['hello'], { type: 'image/jpeg' });
     const b64 = await blobToBase64(blob);
     assert.equal(b64, Buffer.from('hello').toString('base64'));
     const dataUrl = await blobToDataUrl(blob);
-    assert.equal(dataUrl, `data:text/plain;base64,${b64}`);
+    assert.equal(dataUrl, `data:image/jpeg;base64,${b64}`);
   });
 
   it('transcribes cloud audio without passing a language param', async () => {

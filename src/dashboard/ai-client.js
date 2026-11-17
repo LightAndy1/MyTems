@@ -49,15 +49,19 @@ export async function blobToDataUrl(blob, mimeHint = 'image/jpeg') {
   return `data:${blob.type || mimeHint};base64,${await blobToBase64(blob)}`;
 }
 
-/**
- * Strip optional markdown code fences and validate structured study notes JSON.
- */
-export function parseNotesJson(rawText) {
+function parseJsonContent(rawText) {
   const cleaned = String(rawText || '')
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/, '');
-  const parsed = JSON.parse(cleaned);
+  return JSON.parse(cleaned);
+}
+
+/**
+ * Strip optional markdown code fences and validate structured study notes JSON.
+ */
+export function parseNotesJson(rawText) {
+  const parsed = parseJsonContent(rawText);
   if (!parsed || typeof parsed.summary !== 'string' || !Array.isArray(parsed.chapters)) {
     throw new Error('Invalid notes JSON structure');
   }
@@ -180,6 +184,79 @@ export async function generateStructuredNotes({ settings, messages, fetchImpl = 
   if (!content) throw new Error('Empty response from LLM');
   return {
     notes: parseNotesJson(content),
+    costUsd: Number(json.usage?.cost || 0),
+  };
+}
+
+/**
+ * Calibrate Exam Radar candidate items using TypeSafe Jev via OpenRouter.
+ */
+export async function calibrateExamRadarWithJev(items, transcriptSummary, settings, { fetchImpl = fetch } = {}) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { items: Array.isArray(items) ? items : [], costUsd: 0 };
+  }
+  if (!settings?.openrouterApiKey) {
+    return { items, costUsd: 0 };
+  }
+
+  const provider = buildOpenRouterProviderConfig(settings);
+  const res = await fetchWithRetry(
+    OPENROUTER_URLS.CHAT,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${settings.openrouterApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: settings.jevModel || 'typesafe/jev-latest',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You calibrate university lecture Exam Radar items (exam hints, deadlines, homework). Return ONLY valid JSON: { "scores": [{ "index": number, "confidence": number }] } where confidence is a calibrated probability between 0 and 1.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              summary: String(transcriptSummary || '').slice(0, 4000),
+              items: items.map((item, index) => ({
+                index,
+                type: item.type,
+                text: item.text,
+                dueDate: item.dueDate ?? null,
+              })),
+            }),
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+        ...(provider ? { provider } : {}),
+      }),
+    },
+    3,
+    fetchImpl
+  );
+
+  const json = await res.json();
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error('Empty response from Jev');
+
+  const parsed = parseJsonContent(content);
+  const rawScores = Array.isArray(parsed?.scores) ? parsed.scores : [];
+  const scoreByIndex = new Map();
+  for (const entry of rawScores) {
+    const idx = Number(entry?.index);
+    const conf = Number(entry?.confidence);
+    if (Number.isInteger(idx) && Number.isFinite(conf)) {
+      scoreByIndex.set(idx, Math.max(0, Math.min(1, Number(conf.toFixed(2)))));
+    }
+  }
+
+  return {
+    items: items.map((item, index) =>
+      scoreByIndex.has(index) ? { ...item, confidence: scoreByIndex.get(index) } : item
+    ),
     costUsd: Number(json.usage?.cost || 0),
   };
 }

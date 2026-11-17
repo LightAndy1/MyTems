@@ -15,6 +15,15 @@
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
+  "optional_permissions": [
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://teams.microsoft.com/*",
+    "https://teams.cloud.microsoft/*",
+    "https://whiteboard.office.com/*",
+    "https://*.whiteboard.microsoft.com/*"
+  ],
   "background": {
     "service_worker": "src/background/background.js",
     "type": "module"

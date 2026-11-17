@@ -1,8 +1,12 @@
+import { WHITEBOARD_ORIGINS } from '../shared/constants.js';
 import { deriveLectureTitle, formatTimestamp } from '../shared/sanitize.js';
 import { getActiveSession, getSettings } from '../shared/storage.js';
+import { shouldEnableWhiteboard } from '../shared/whiteboard.js';
 
 const tabTitleEl = document.getElementById('tabTitle');
 const courseHintEl = document.getElementById('courseHint');
+const wbToggleRowEl = document.getElementById('wbToggleRow');
+const wbCaptureCheckEl = document.getElementById('wbCaptureCheck');
 const statusDotEl = document.getElementById('statusDot');
 const statusLabelEl = document.getElementById('statusLabel');
 const timerEl = document.getElementById('timer');
@@ -24,6 +28,7 @@ function renderSession(session) {
   if (session) {
     tabTitleEl.textContent = session.title;
     courseHintEl.hidden = true;
+    wbToggleRowEl.hidden = true;
     statusDotEl.classList.add('live');
     statusLabelEl.textContent = 'Recording locally ($0)';
     timerEl.hidden = false;
@@ -37,6 +42,7 @@ function renderSession(session) {
   } else {
     tabTitleEl.textContent = currentTab ? deriveLectureTitle(currentTab.title) : 'No active tab';
     courseHintEl.hidden = false;
+    wbToggleRowEl.hidden = false;
     statusDotEl.classList.remove('live');
     statusLabelEl.textContent = 'Ready to capture tab';
     timerEl.hidden = true;
@@ -52,6 +58,11 @@ async function init() {
   if (settings.defaultCourseHint && !courseHintEl.value) {
     courseHintEl.value = settings.defaultCourseHint;
   }
+  wbCaptureCheckEl.checked = shouldEnableWhiteboard({
+    mode: settings.whiteboardMode,
+    tabTitle: currentTab?.title,
+    filterCsv: settings.whiteboardMeetings,
+  });
   renderSession(session);
 }
 
@@ -66,6 +77,13 @@ toggleBtn.addEventListener('click', async () => {
       renderSession(null);
     } else {
       if (!currentTab?.id) throw new Error('Open a Teams tab before recording.');
+      let whiteboardOverride = wbCaptureCheckEl.checked;
+      if (whiteboardOverride && chrome.permissions?.request) {
+        const ok = await chrome.permissions
+          .request({ permissions: ['scripting'], origins: WHITEBOARD_ORIGINS })
+          .catch(() => false);
+        if (!ok) whiteboardOverride = false;
+      }
       const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: currentTab.id });
       const resp = await chrome.runtime.sendMessage({
         type: 'START_RECORDING',
@@ -73,6 +91,7 @@ toggleBtn.addEventListener('click', async () => {
         tabTitle: currentTab.title || '',
         streamId,
         courseHint: courseHintEl.value,
+        whiteboardOverride,
       });
       if (!resp?.ok) throw new Error(resp?.error || 'Failed to start recording');
       renderSession(resp.data);

@@ -163,6 +163,26 @@ input::placeholder {
   color: var(--muted);
 }
 
+.wb-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.wb-toggle[hidden] {
+  display: none;
+}
+
+.wb-toggle input {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .primary-btn {
   background: var(--accent);
   color: #ffffff;

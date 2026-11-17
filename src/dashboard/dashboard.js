@@ -1,3 +1,4 @@
+import { WHITEBOARD_ORIGINS } from '../shared/constants.js';
 import { formatTimestamp, toSafeFilename } from '../shared/sanitize.js';
 import {
   deleteLectureMeta,
@@ -506,6 +507,8 @@ const SETTING_FIELDS = [
   'localLlmUrl',
   'localLlmModel',
   'defaultCourseHint',
+  'whiteboardMode',
+  'whiteboardMeetings',
 ];
 let modalMode = 'cloud';
 
@@ -537,6 +540,21 @@ form.addEventListener('submit', async (e) => {
   const patch = { providerMode: modalMode };
   for (const name of SETTING_FIELDS) {
     patch[name] = form.elements[name].value.trim();
+  }
+  if (patch.whiteboardMode !== 'off' && chrome.permissions?.request) {
+    let granted = false;
+    try {
+      granted = await chrome.permissions.request({
+        permissions: ['scripting'],
+        origins: WHITEBOARD_ORIGINS,
+      });
+    } catch {
+      granted = false;
+    }
+    if (!granted) {
+      patch.whiteboardMode = 'off';
+      setBanner('Whiteboard permission denied; kept Off.', true);
+    }
   }
   await saveSettings(patch);
   modal.close();

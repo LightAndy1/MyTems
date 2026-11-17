@@ -198,6 +198,20 @@
           <span>Default Course Hint</span>
           <input name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
         </label>
+        <div class="two-col">
+          <label>
+            <span>MS Whiteboard Capture</span>
+            <select name="whiteboardMode">
+              <option value="off">Off</option>
+              <option value="match">Matching Meetings Only</option>
+              <option value="always">Always On</option>
+            </select>
+          </label>
+          <label>
+            <span>Whiteboard Meeting Keywords</span>
+            <input name="whiteboardMeetings" type="text" placeholder="e.g. Algebra, Calculus, Math" />
+          </label>
+        </div>
         <p class="helper-note">Language detection and note output language are automatic (RO/EN). Tip: for GLM-5.3-Flash, pick Cheapest routing or list a provider slug.</p>
 
         <footer class="modal-foot">

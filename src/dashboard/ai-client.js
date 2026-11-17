@@ -19,7 +19,7 @@ export async function fetchWithRetry(url, init, retries = 3, fetchImpl = fetch, 
       throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 200)}`);
     } catch (err) {
       lastError = err;
-      if (attempt < retries && !String(err.message).startsWith('HTTP 4')) {
+      if (attempt < retries && !String(err?.message || '').startsWith('HTTP 4')) {
         await sleep(500 * 2 ** attempt);
         continue;
       }
@@ -77,6 +77,7 @@ export async function transcribeAudioSegment({ settings, blob, filename, fetchIm
   const isLocal = settings.providerMode === 'local';
   let res;
   if (isLocal) {
+    if (!settings.localSttUrl?.trim()) throw new Error('Missing Local STT URL in Settings.');
     const form = new FormData();
     form.append('file', blob, filename);
     form.append('model', settings.localSttModel);
@@ -128,7 +129,9 @@ export async function generateStructuredNotes({ settings, messages, fetchImpl = 
   const isLocal = settings.providerMode === 'local';
   const url = isLocal ? settings.localLlmUrl : OPENROUTER_URLS.CHAT;
   const headers = { 'Content-Type': 'application/json' };
-  if (!isLocal) {
+  if (isLocal) {
+    if (!settings.localLlmUrl?.trim()) throw new Error('Missing Local LLM URL in Settings.');
+  } else {
     if (!settings.openrouterApiKey) throw new Error('Missing OpenRouter API key in Settings.');
     headers.Authorization = `Bearer ${settings.openrouterApiKey}`;
   }

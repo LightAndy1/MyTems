@@ -136,8 +136,11 @@ export async function runLecturePipeline({
     if (!lecture.slidesExtracted) {
       try {
         const videoFile = await resolvedDeps.readLectureFile(lectureId, 'video.webm');
-        await resolvedDeps.extractSlidesFromVideo(videoFile, lectureId, (p) =>
-          onStage(`Extracting slides (${Math.round(p * 100)}%)...`)
+        await resolvedDeps.extractSlidesFromVideo(
+          videoFile,
+          lectureId,
+          (p) => onStage(`Extracting slides (${Math.round(p * 100)}%)...`),
+          lecture.durationSec
         );
         await resolvedDeps.upsertLecture({ id: lectureId, slidesExtracted: true });
       } catch (err) {

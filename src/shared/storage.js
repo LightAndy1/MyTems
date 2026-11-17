@@ -1,15 +1,25 @@
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants.js';
 
 export function createStorage(area) {
+  let writeQueue = Promise.resolve();
+
+  function enqueueWrite(fn) {
+    const next = writeQueue.then(fn, fn);
+    writeQueue = next.catch(() => {});
+    return next;
+  }
+
   async function getSettings() {
     const res = await area.get(STORAGE_KEYS.SETTINGS);
     return { ...DEFAULT_SETTINGS, ...(res[STORAGE_KEYS.SETTINGS] || {}) };
   }
 
-  async function saveSettings(patch) {
-    const next = { ...(await getSettings()), ...patch };
-    await area.set({ [STORAGE_KEYS.SETTINGS]: next });
-    return next;
+  function saveSettings(patch) {
+    return enqueueWrite(async () => {
+      const next = { ...(await getSettings()), ...patch };
+      await area.set({ [STORAGE_KEYS.SETTINGS]: next });
+      return next;
+    });
   }
 
   async function listLectures() {
@@ -23,19 +33,23 @@ export function createStorage(area) {
     return list.find((l) => l.id === id) || null;
   }
 
-  async function upsertLecture(entry) {
-    const list = await listLectures();
-    const idx = list.findIndex((l) => l.id === entry.id);
-    const merged = idx >= 0 ? { ...list[idx], ...entry } : entry;
-    if (idx >= 0) list[idx] = merged;
-    else list.unshift(merged);
-    await area.set({ [STORAGE_KEYS.LECTURES]: list });
-    return merged;
+  function upsertLecture(entry) {
+    return enqueueWrite(async () => {
+      const list = await listLectures();
+      const idx = list.findIndex((l) => l.id === entry.id);
+      const merged = idx >= 0 ? { ...list[idx], ...entry } : entry;
+      if (idx >= 0) list[idx] = merged;
+      else list.unshift(merged);
+      await area.set({ [STORAGE_KEYS.LECTURES]: list });
+      return merged;
+    });
   }
 
-  async function deleteLectureMeta(id) {
-    const list = (await listLectures()).filter((l) => l.id !== id);
-    await area.set({ [STORAGE_KEYS.LECTURES]: list });
+  function deleteLectureMeta(id) {
+    return enqueueWrite(async () => {
+      const list = (await listLectures()).filter((l) => l.id !== id);
+      await area.set({ [STORAGE_KEYS.LECTURES]: list });
+    });
   }
 
   async function getActiveSession() {
@@ -43,29 +57,31 @@ export function createStorage(area) {
     return res[STORAGE_KEYS.ACTIVE_SESSION] || null;
   }
 
-  async function setActiveSession(session) {
-    await area.set({ [STORAGE_KEYS.ACTIVE_SESSION]: session });
+  function setActiveSession(session) {
+    return enqueueWrite(() => area.set({ [STORAGE_KEYS.ACTIVE_SESSION]: session }));
   }
 
-  async function recoverStaleRecordings(activeLectureId) {
-    const list = await listLectures();
-    let count = 0;
-    const next = list.map((lec) => {
-      if (lec.status !== 'recording' || lec.id === activeLectureId) return lec;
-      count += 1;
-      const elapsedSec =
-        lec.lastChunkAtMs && lec.startedAtMs
-          ? Math.max(1, Math.round((lec.lastChunkAtMs - lec.startedAtMs) / 1000))
-          : lec.durationSec || 0;
-      return {
-        ...lec,
-        status: 'recorded',
-        recoveredFromCrash: true,
-        durationSec: elapsedSec,
-      };
+  function recoverStaleRecordings(activeLectureId) {
+    return enqueueWrite(async () => {
+      const list = await listLectures();
+      let count = 0;
+      const next = list.map((lec) => {
+        if (lec.status !== 'recording' || lec.id === activeLectureId) return lec;
+        count += 1;
+        const elapsedSec =
+          lec.lastChunkAtMs && lec.startedAtMs
+            ? Math.max(1, Math.round((lec.lastChunkAtMs - lec.startedAtMs) / 1000))
+            : lec.durationSec || 0;
+        return {
+          ...lec,
+          status: 'recorded',
+          recoveredFromCrash: true,
+          durationSec: elapsedSec,
+        };
+      });
+      if (count > 0) await area.set({ [STORAGE_KEYS.LECTURES]: next });
+      return count;
     });
-    if (count > 0) await area.set({ [STORAGE_KEYS.LECTURES]: next });
-    return count;
   }
 
   return {

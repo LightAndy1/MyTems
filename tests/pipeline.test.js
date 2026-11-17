@@ -53,6 +53,39 @@ describe('AI pipeline & client helpers', () => {
     assert.equal(calls, 1);
   });
 
+  it('retries and rethrows safely when fetchImpl rejects with null', async () => {
+    let calls = 0;
+    const mockFetch = async () => {
+      calls += 1;
+      throw null;
+    };
+    await assert.rejects(
+      () => fetchWithRetry('https://example.test', {}, 2, mockFetch, async () => {}),
+      (err) => err === null
+    );
+    assert.equal(calls, 3);
+  });
+
+  it('rejects local STT and LLM calls when local URL is blank', async () => {
+    await assert.rejects(
+      () =>
+        transcribeAudioSegment({
+          settings: { providerMode: 'local', localSttUrl: '', localSttModel: 'whisper-1' },
+          blob: new Blob(['a']),
+          filename: 'part_000.webm',
+        }),
+      /Missing Local STT URL/
+    );
+    await assert.rejects(
+      () =>
+        generateStructuredNotes({
+          settings: { providerMode: 'local', localLlmUrl: '   ', localLlmModel: 'qwen' },
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+      /Missing Local LLM URL/
+    );
+  });
+
   it('converts blob to base64 and data URL', async () => {
     const blob = new Blob(['hello'], { type: 'text/plain' });
     const b64 = await blobToBase64(blob);
@@ -253,6 +286,7 @@ describe('AI pipeline & client helpers', () => {
     const statuses = [];
     const stages = [];
     const written = {};
+    let receivedFallbackDur = null;
     const res = await runLecturePipeline({
       lectureId: 'lec-2',
       courseHint: 'OS',
@@ -260,6 +294,7 @@ describe('AI pipeline & client helpers', () => {
       deps: {
         getLecture: async () => ({
           id: 'lec-2',
+          durationSec: 321,
           audioSegments: [{ filename: 'audio/part_000.webm', offsetSec: 0 }],
         }),
         getSettings: async () => ({ providerMode: 'local', localSttModel: 'whisper-1', localLlmModel: 'qwen' }),
@@ -274,7 +309,11 @@ describe('AI pipeline & client helpers', () => {
           language: 'en',
           costUsd: 0,
         }),
-        extractSlidesFromVideo: async (_vf, _id, onProg) => { onProg(0.5); return [{ filename: '001_15.jpg', timestampSec: 15 }]; },
+        extractSlidesFromVideo: async (_vf, _id, onProg, fallbackDurationSec) => {
+          receivedFallbackDur = fallbackDurationSec;
+          onProg(0.5);
+          return [{ filename: '001_15.jpg', timestampSec: 15 }];
+        },
         generateStructuredNotes: async () => ({
           notes: { summary: 'OS summary', chapters: [], definitions: [], examRadar: [] },
           costUsd: 0,
@@ -283,6 +322,7 @@ describe('AI pipeline & client helpers', () => {
       },
     });
 
+    assert.equal(receivedFallbackDur, 321);
     assert.equal(res.slides.length, 1);
     assert.equal(res.slides[0].timestampSec, 15);
     assert.ok(written['transcript.json']);

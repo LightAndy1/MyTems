@@ -69,6 +69,30 @@ describe('storage index and crash recovery', () => {
     await s.deleteLectureMeta('live');
     assert.equal(await s.getLecture('live'), null);
   });
+
+  it('serializes concurrent write operations so parallel upsertLecture calls preserve all entries', async () => {
+    const store = {};
+    const slowArea = {
+      async get(key) {
+        await new Promise((r) => setTimeout(r, 5));
+        return typeof key === 'string' ? { [key]: store[key] } : { ...store };
+      },
+      async set(obj) {
+        await new Promise((r) => setTimeout(r, 5));
+        Object.assign(store, obj);
+      },
+    };
+    const s = createStorage(slowArea);
+    await Promise.all([
+      s.upsertLecture({ id: 'a', title: 'Lecture A', createdAt: '2026-11-17T08:00:00Z', status: 'recorded' }),
+      s.upsertLecture({ id: 'b', title: 'Lecture B', createdAt: '2026-11-17T09:00:00Z', status: 'recorded' }),
+      s.upsertLecture({ id: 'a', status: 'ready' }),
+    ]);
+    const list = await s.listLectures();
+    assert.deepEqual(list.map((l) => l.id), ['b', 'a']);
+    assert.equal((await s.getLecture('a')).status, 'ready');
+    assert.equal((await s.getLecture('a')).title, 'Lecture A');
+  });
 });
 
 function notFound(msg) {

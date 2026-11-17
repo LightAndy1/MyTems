@@ -35,16 +35,21 @@ const SETTING_FIELDS = [
 ];
 
 let selectedId = null;
+let selectSeq = 0;
 let currentVideoUrl = null;
 let slideUrls = [];
 let currentNotes = null;
 let currentTranscript = null;
 
+function revokeSlideUrls() {
+  for (const u of slideUrls) URL.revokeObjectURL(u);
+  slideUrls = [];
+}
+
 function revokeObjectUrls() {
   if (currentVideoUrl) URL.revokeObjectURL(currentVideoUrl);
   currentVideoUrl = null;
-  for (const u of slideUrls) URL.revokeObjectURL(u);
-  slideUrls = [];
+  revokeSlideUrls();
 }
 
 function seekTo(sec) {
@@ -100,13 +105,19 @@ function renderTranscript(query = '') {
   }
 }
 
-async function renderSlides(lectureId) {
+async function renderSlides(lectureId, isStale = () => false) {
   const files = await listDirFiles(lectureId, 'slides');
+  if (isStale()) return files;
+  const loaded = [];
+  for (const f of files) {
+    const file = await readLectureFile(lectureId, `slides/${f}`);
+    if (isStale()) return files;
+    loaded.push({ file, f });
+  }
   const grid = el('slidesGrid');
   grid.innerHTML = '';
   el('slidesStrip').hidden = files.length === 0;
-  for (const f of files) {
-    const file = await readLectureFile(lectureId, `slides/${f}`);
+  for (const { file, f } of loaded) {
     const url = URL.createObjectURL(file);
     slideUrls.push(url);
     const sec = Number(f.split('_')[1]?.split('.')[0] || 0);
@@ -192,11 +203,14 @@ function renderNotes(notes) {
 }
 
 async function selectLecture(id) {
+  const seq = ++selectSeq;
   selectedId = id;
   revokeObjectUrls();
   await renderLectureList();
+  if (seq !== selectSeq) return;
 
   const lec = await getLecture(id);
+  if (seq !== selectSeq) return;
   if (!lec) {
     el('emptyState').hidden = false;
     el('lectureView').hidden = true;
@@ -207,7 +221,12 @@ async function selectLecture(id) {
   el('lectureView').hidden = false;
   el('lecTitle').textContent = lec.title || 'Teams Lecture';
   el('lecCourseHint').value = lec.courseHint || '';
+  const isRecording = lec.status === 'recording';
+  el('freeMediaBtn').disabled = isRecording;
+  el('deleteLectureBtn').disabled = isRecording;
+
   const bytes = await getLectureMediaBytes(id);
+  if (seq !== selectSeq) return;
   el('lecMeta').textContent = `${String(lec.createdAt || '').slice(0, 10)} · ${formatTimestamp(lec.durationSec)} · ${(bytes / 1048576).toFixed(1)} MB · ${lec.status}`;
   el('statusBanner').hidden = !lec.error;
   el('statusBanner').textContent = lec.error || '';
@@ -215,6 +234,7 @@ async function selectLecture(id) {
   const player = el('videoPlayer');
   try {
     const videoFile = await readLectureFile(id, 'video.webm');
+    if (seq !== selectSeq) return;
     currentVideoUrl = URL.createObjectURL(videoFile);
     player.src = currentVideoUrl;
     player.hidden = false;
@@ -222,6 +242,7 @@ async function selectLecture(id) {
     el('snapSlideBtn').hidden = false;
     el('downloadVideoBtn').disabled = false;
   } catch {
+    if (seq !== selectSeq) return;
     player.hidden = true;
     player.removeAttribute('src');
     el('mediaFreedNote').hidden = false;
@@ -229,10 +250,17 @@ async function selectLecture(id) {
     el('downloadVideoBtn').disabled = true;
   }
 
-  currentTranscript = await readLectureJson(id, 'transcript.json');
+  const transcript = await readLectureJson(id, 'transcript.json');
+  if (seq !== selectSeq) return;
+  currentTranscript = transcript;
   renderTranscript(el('transcriptSearch').value);
-  await renderSlides(id);
-  renderNotes(await readLectureJson(id, 'notes.json'));
+
+  await renderSlides(id, () => seq !== selectSeq);
+  if (seq !== selectSeq) return;
+
+  const notes = await readLectureJson(id, 'notes.json');
+  if (seq !== selectSeq) return;
+  renderNotes(notes);
 }
 
 el('summarizeBtn').addEventListener('click', async () => {
@@ -255,24 +283,30 @@ el('summarizeBtn').addEventListener('click', async () => {
 
 el('snapSlideBtn').addEventListener('click', async () => {
   if (!selectedId) return;
+  const targetId = selectedId;
   const player = el('videoPlayer');
-  await captureCurrentVideoFrame(player, selectedId, player.currentTime);
-  await selectLecture(selectedId);
+  await captureCurrentVideoFrame(player, targetId, player.currentTime);
+  if (selectedId !== targetId) return;
+  revokeSlideUrls();
+  await renderSlides(targetId, () => selectedId !== targetId);
 });
 
 el('attachImagesBtn').addEventListener('click', () => el('attachImagesInput').click());
 el('attachImagesInput').addEventListener('change', async (e) => {
   if (!selectedId || !e.target.files?.length) return;
-  const existing = await listDirFiles(selectedId, 'slides');
+  const targetId = selectedId;
+  const existing = await listDirFiles(targetId, 'slides');
   let nextNum = existing.length + 1;
   const sec = Math.max(0, Math.floor(el('videoPlayer').currentTime || 0));
   for (const file of e.target.files) {
     const ext = file.name.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
     const filename = `${String(nextNum++).padStart(3, '0')}_${sec}.${ext}`;
-    await writeLectureFile(selectedId, `slides/${filename}`, new Uint8Array(await file.arrayBuffer()));
+    await writeLectureFile(targetId, `slides/${filename}`, new Uint8Array(await file.arrayBuffer()));
   }
   e.target.value = '';
-  await selectLecture(selectedId);
+  if (selectedId !== targetId) return;
+  revokeSlideUrls();
+  await renderSlides(targetId, () => selectedId !== targetId);
 });
 
 el('downloadVideoBtn').addEventListener('click', async () => {
@@ -294,6 +328,7 @@ el('freeMediaBtn').addEventListener('click', async () => {
 el('deleteLectureBtn').addEventListener('click', async () => {
   if (!selectedId) return;
   const id = selectedId;
+  ++selectSeq;
   selectedId = null;
   revokeObjectUrls();
   renderNotes(null);

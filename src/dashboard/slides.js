@@ -15,12 +15,13 @@ export function shouldCaptureSlide({
   diff,
   elapsedSec,
   slideCount,
+  isFirst = slideCount === 0,
   threshold = SLIDE_CONFIG.DIFF_THRESHOLD,
   minCooldownSec = SLIDE_CONFIG.MIN_COOLDOWN_SEC,
   maxSlides = SLIDE_CONFIG.MAX_SLIDES,
 }) {
   if (slideCount >= maxSlides) return false;
-  if (slideCount === 0) return true;
+  if (isFirst) return true;
   return diff >= threshold && elapsedSec >= minCooldownSec;
 }
 
@@ -36,6 +37,25 @@ function seekVideo(video, sec) {
     video.addEventListener('error', onError, { once: true });
     video.currentTime = sec;
   });
+}
+
+/**
+ * Resolve video duration, probing Infinity WebM durations by seeking to a large timestamp.
+ */
+export async function resolveVideoDuration(video, seekFn = seekVideo, fallbackDurationSec = 0) {
+  if (Number.isFinite(video.duration) && video.duration > 0) return video.duration;
+  if (video.duration === Infinity) {
+    try {
+      await seekFn(video, 1e10);
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        await seekFn(video, 0);
+        return video.duration;
+      }
+    } catch {
+      // Fall back to recorded metadata duration when probe seek fails.
+    }
+  }
+  return Number.isFinite(fallbackDurationSec) && fallbackDurationSec > 0 ? fallbackDurationSec : 0;
 }
 
 async function encodeFrameJpeg(video) {
@@ -58,7 +78,7 @@ export async function captureCurrentVideoFrame(videoEl, lectureId, timestampSec)
   return { filename, timestampSec: secInt };
 }
 
-export async function extractSlidesFromVideo(videoFile, lectureId, onProgress = () => {}) {
+export async function extractSlidesFromVideo(videoFile, lectureId, onProgress = () => {}, fallbackDurationSec = 0) {
   const url = URL.createObjectURL(videoFile);
   const video = document.createElement('video');
   video.muted = true;
@@ -76,8 +96,11 @@ export async function extractSlidesFromVideo(videoFile, lectureId, onProgress = 
       video.onerror = () => reject(new Error('Could not decode video.webm'));
     });
 
-    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+    const duration = await resolveVideoDuration(video, seekVideo, fallbackDurationSec);
     if (duration === 0) return [];
+
+    const existingSlides = await listDirFiles(lectureId, 'slides');
+    if (existingSlides.length >= SLIDE_CONFIG.MAX_SLIDES) return [];
 
     const slides = [];
     let prevPixels = null;
@@ -88,9 +111,17 @@ export async function extractSlidesFromVideo(videoFile, lectureId, onProgress = 
       cmpCtx.drawImage(video, 0, 0, cmpCanvas.width, cmpCanvas.height);
       const curr = cmpCtx.getImageData(0, 0, cmpCanvas.width, cmpCanvas.height).data;
       const diff = prevPixels ? computeMeanPixelDiff(prevPixels, curr) : 1;
+      const totalSlides = existingSlides.length + slides.length;
 
-      if (shouldCaptureSlide({ diff, elapsedSec: t - lastCaptureSec, slideCount: slides.length })) {
-        const idx = String(slides.length + 1).padStart(3, '0');
+      if (
+        shouldCaptureSlide({
+          diff,
+          elapsedSec: t - lastCaptureSec,
+          slideCount: totalSlides,
+          isFirst: slides.length === 0,
+        })
+      ) {
+        const idx = String(totalSlides + 1).padStart(3, '0');
         const secInt = Math.floor(t);
         const filename = `${idx}_${secInt}.jpg`;
         const jpeg = await encodeFrameJpeg(video);
@@ -100,7 +131,7 @@ export async function extractSlidesFromVideo(videoFile, lectureId, onProgress = 
         lastCaptureSec = t;
       }
       onProgress(Math.min(1, t / duration));
-      if (slides.length >= SLIDE_CONFIG.MAX_SLIDES) break;
+      if (existingSlides.length + slides.length >= SLIDE_CONFIG.MAX_SLIDES) break;
     }
     onProgress(1);
     return slides;

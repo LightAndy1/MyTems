@@ -111,12 +111,14 @@ async function startCapture({ lectureId, streamId }) {
       videoChain = videoChain.then(async () => {
         const buf = await e.data.arrayBuffer();
         await callWorker({ type: 'append', lectureId, relPath: 'video.webm', bytes: buf }, [buf]);
-        chrome.runtime.sendMessage({
-          type: 'CAPTURE_HEARTBEAT',
-          lectureId,
-          lastChunkAtMs: Date.now(),
-          audioSegments: session?.audioSegments || [],
-        }).catch(() => {});
+        if (!newSession.stopping) {
+          chrome.runtime.sendMessage({
+            type: 'CAPTURE_HEARTBEAT',
+            lectureId,
+            lastChunkAtMs: Date.now(),
+            audioSegments: newSession.audioSegments,
+          }).catch(() => {});
+        }
       });
     };
 
@@ -135,6 +137,7 @@ async function startCapture({ lectureId, streamId }) {
     const newSession = {
       lectureId,
       startedAtMs,
+      stopping: false,
       stream,
       audioStream,
       audioCtx,
@@ -182,6 +185,7 @@ async function startCapture({ lectureId, streamId }) {
   } catch (err) {
     if (session) {
       const failed = session;
+      failed.stopping = true;
       session = null;
       clearInterval(failed.rolloverTimer);
       for (const timer of failed.overlapTimers) clearTimeout(timer);
@@ -202,6 +206,7 @@ async function startCapture({ lectureId, streamId }) {
 async function stopCapture() {
   if (!session) return null;
   const active = session;
+  active.stopping = true;
   session = null;
   clearInterval(active.rolloverTimer);
   for (const timer of active.overlapTimers) clearTimeout(timer);

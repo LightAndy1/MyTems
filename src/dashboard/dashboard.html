@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyTems — Saved Lectures</title>
+    <link rel="stylesheet" href="./dashboard.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <h1>MyTems</h1>
+          <button id="openSettingsBtn" class="ghost-btn" title="Settings">⚙ Settings</button>
+        </div>
+        <input id="lectureFilter" class="search-input" type="search" placeholder="Filter lectures..." />
+        <ul id="lectureList" class="lecture-list"></ul>
+      </aside>
+
+      <main id="detailPane" class="detail-pane">
+        <div id="emptyState" class="empty-state">
+          <h2>Select a lecture</h2>
+          <p>Record a Teams lecture from the toolbar, then transcribe and summarize on demand.</p>
+        </div>
+
+        <section id="lectureView" class="lecture-view" hidden>
+          <header class="lecture-header">
+            <div>
+              <h2 id="lecTitle"></h2>
+              <p id="lecMeta" class="muted"></p>
+            </div>
+            <div class="actions">
+              <button id="downloadVideoBtn" class="ghost-btn">Download Video</button>
+              <button id="freeMediaBtn" class="ghost-btn">Free Media Space</button>
+              <button id="deleteLectureBtn" class="danger-btn">Delete</button>
+            </div>
+          </header>
+
+          <div class="controls-bar">
+            <input id="lecCourseHint" type="text" placeholder="Course hint (optional, improves RO+EN terms)" />
+            <button id="summarizeBtn" class="primary-btn">Transcribe & Summarize</button>
+            <button id="copyNotionBtn" class="ghost-btn" disabled>Copy Notion MD</button>
+            <button id="zipNotionBtn" class="ghost-btn" disabled>Export Notion .zip</button>
+          </div>
+          <p id="statusBanner" class="status-banner" hidden></p>
+
+          <div class="player-wrap">
+            <video id="videoPlayer" controls></video>
+            <div id="mediaFreedNote" class="media-freed" hidden>Raw video/audio freed — notes, transcript, and slides remain saved locally.</div>
+            <div class="actions">
+              <button id="snapSlideBtn" class="ghost-btn" hidden>Snap Slide at Current Time</button>
+              <button id="attachImagesBtn" class="ghost-btn">Attach Whiteboard / Slide Image</button>
+              <input id="attachImagesInput" type="file" accept="image/*" multiple hidden />
+            </div>
+          </div>
+
+          <section id="radarCard" class="radar-card" hidden>
+            <h3>Exam & Deadline Radar</h3>
+            <ul id="radarList"></ul>
+          </section>
+
+          <section id="slidesStrip" class="slides-strip" hidden>
+            <h3>Extracted Slides</h3>
+            <div id="slidesGrid" class="slides-grid"></div>
+          </section>
+
+          <section id="notesSection" class="notes-section" hidden>
+            <div class="notes-head">
+              <h3>Study Notes</h3>
+              <span id="costReceipt" class="cost-pill"></span>
+            </div>
+            <p id="notesSummary"></p>
+            <div id="chaptersContainer"></div>
+            <div id="definitionsContainer"></div>
+          </section>
+
+          <section id="transcriptSection" class="transcript-section" hidden>
+            <div class="notes-head">
+              <h3>Transcript</h3>
+              <input id="transcriptSearch" type="search" placeholder="Search transcript..." />
+            </div>
+            <div id="transcriptLines" class="transcript-lines"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="settingsModal" class="modal">
+      <form id="settingsForm" method="dialog" class="modal-card">
+        <header class="modal-head">
+          <h2>Settings</h2>
+          <button type="button" id="closeSettingsBtn" class="ghost-btn">✕</button>
+        </header>
+
+        <div class="segmented" role="group" aria-label="AI Provider Mode">
+          <button type="button" data-mode="cloud" class="seg-btn active">Cloud (OpenRouter)</button>
+          <button type="button" data-mode="local" class="seg-btn">Local Endpoint</button>
+        </div>
+
+        <div id="cloudFields" class="field-group">
+          <label>OpenRouter API Key <input name="openrouterApiKey" type="password" placeholder="sk-or-v1-..." /></label>
+          <label>STT Model <input name="sttModel" type="text" /></label>
+          <label>Vision / Summary Model <input name="llmModel" type="text" /></label>
+        </div>
+
+        <div id="localFields" class="field-group" hidden>
+          <label>Local STT URL <input name="localSttUrl" type="url" /></label>
+          <label>Local STT Model <input name="localSttModel" type="text" /></label>
+          <label>Local LLM URL <input name="localLlmUrl" type="url" /></label>
+          <label>Local Vision/LLM Model <input name="localLlmModel" type="text" /></label>
+        </div>
+
+        <label>Default Course Hint <input name="defaultCourseHint" type="text" placeholder="e.g. Algorithms" /></label>
+        <p class="muted small">Language detection and note output language are automatic (RO/EN).</p>
+
+        <footer class="modal-foot">
+          <button type="submit" class="primary-btn">Save Settings</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <script type="module" src="./dashboard.js"></script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyTems</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header class="header">
+        <span class="brand">MyTems</span>
+        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open Settings">⚙</button>
+      </header>
+
+      <section class="card">
+        <p id="tabTitle" class="tab-title">Detecting tab...</p>
+        <input id="courseHint" type="text" placeholder="Optional course hint (e.g. Distributed Systems)" />
+        <div id="timer" class="timer" hidden>00:00</div>
+        <button id="toggleBtn" class="primary-btn">Start Recording</button>
+        <p id="errorMsg" class="error" hidden></p>
+      </section>
+
+      <button id="dashboardBtn" class="secondary-btn">Open Saved Lectures →</button>
+    </main>
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>

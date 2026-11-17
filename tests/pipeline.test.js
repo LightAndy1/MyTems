@@ -12,8 +12,11 @@ import {
 import {
   mergeTranscriptSegments,
   buildVisionMessages,
+  buildLessonVisionMessages,
   runLecturePipeline,
   runTranscriptionOnly,
+  runLessonTranscription,
+  runLessonPipeline,
 } from '../src/dashboard/pipeline.js';
 
 describe('AI pipeline & client helpers', () => {
@@ -482,5 +485,108 @@ describe('AI pipeline & client helpers', () => {
     });
     assert.equal(extractCalled, false);
     assert.equal(result.notes.chapters[0].formulas[0], "(x^2)'=2x");
+  });
+
+  it('forwards optional STT continuity prompt without adding language param', async () => {
+    let sentBody = null;
+    const mockFetch = async (_url, init) => {
+      sentBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ text: 'Next part', segments: [{ start: 0, end: 2, text: 'Next part' }] }), { status: 200 });
+    };
+    await transcribeAudioSegment({
+      settings: { providerMode: 'cloud', openrouterApiKey: 'sk-1', sttModel: 'openai/whisper-large-v3' },
+      blob: new Blob(['x'], { type: 'audio/webm' }),
+      filename: '000.webm',
+      prompt: 'Mathematical Logic: modus ponens',
+      fetchImpl: mockFetch,
+    });
+    assert.equal(sentBody.prompt, 'Mathematical Logic: modus ponens');
+    assert.equal('language' in sentBody, false);
+  });
+
+  it('chains prior part transcript tail into subsequent parts during runLessonTranscription', async () => {
+    const promptsSeen = [];
+    const saved = {};
+    const lectures = {
+      p1: { id: 'p1', title: 'Math Logic', subject: 'Math Logic', audioSegments: [{ filename: 'audio/000.webm', offsetSec: 0 }] },
+      p2: { id: 'p2', title: 'Math Logic', subject: 'Math Logic', audioSegments: [{ filename: 'audio/000.webm', offsetSec: 0 }] },
+    };
+    const deps = {
+      getLecture: async (id) => lectures[id],
+      getSettings: async () => ({ providerMode: 'cloud', openrouterApiKey: 'sk', sttModel: 'w', llmModel: 'g' }),
+      upsertLecture: async (patch) => { lectures[patch.id] = { ...lectures[patch.id], ...patch }; return lectures[patch.id]; },
+      readLectureJson: async (id, path) => saved[`${id}/${path}`] || null,
+      writeLectureJson: async (id, path, data) => { saved[`${id}/${path}`] = data; },
+      readLectureFile: async () => new Blob(['a'], { type: 'audio/webm' }),
+      listDirFiles: async () => [],
+      transcribeAudioSegment: async ({ prompt }) => {
+        promptsSeen.push(prompt || '');
+        const idx = promptsSeen.length;
+        return {
+          text: idx === 1 ? 'First part ends with Herbrand theorem.' : 'Second part continues proof.',
+          segments: [{ startSec: 0, endSec: 5, text: idx === 1 ? 'First part ends with Herbrand theorem.' : 'Second part continues proof.' }],
+          language: 'en',
+          costUsd: 0.001,
+        };
+      },
+    };
+    await runLessonTranscription({ lectureIds: ['p1', 'p2'], courseHint: 'Math Logic', deps });
+    assert.match(promptsSeen[0], /Math Logic/);
+    assert.match(promptsSeen[1], /Herbrand theorem/);
+    assert.equal(lectures.p1.status, 'transcribed');
+    assert.equal(lectures.p2.status, 'transcribed');
+  });
+
+  it('synthesizes connected multi-part Lesson notes with prior-lesson context and partIndex tags', async () => {
+    let sentMessages = null;
+    const savedLesson = {};
+    const lectures = {
+      p1: { id: 'p1', title: 'Logic', subject: 'Math Logic', createdAt: '2026-11-17T10:00:00Z', durationSec: 300, slidesExtracted: true },
+      p2: { id: 'p2', title: 'Logic', subject: 'Math Logic', createdAt: '2026-11-17T11:00:00Z', durationSec: 400, slidesExtracted: true },
+    };
+    const deps = {
+      getLecture: async (id) => lectures[id],
+      getSettings: async () => ({ providerMode: 'cloud', openrouterApiKey: 'sk', sttModel: 'w', llmModel: 'g' }),
+      upsertLecture: async (patch) => { lectures[patch.id] = { ...lectures[patch.id], ...patch }; return lectures[patch.id]; },
+      readLectureJson: async (id) => ({
+        segments: [{ startSec: 12, endSec: 20, text: id === 'p1' ? 'Part one syntax' : 'Part two semantics' }],
+        fullText: id === 'p1' ? 'Part one syntax' : 'Part two semantics',
+        sttCostUsd: 0.002,
+      }),
+      writeLectureJson: async () => {},
+      readLessonJson: async () => null,
+      writeLessonJson: async (lid, path, obj) => { savedLesson[`${lid}/${path}`] = obj; },
+      listDirFiles: async (id) => (id === 'p2' ? ['001_15.jpg'] : []),
+      readLectureFile: async () => new Blob(['img'], { type: 'image/jpeg' }),
+      blobToDataUrl: async () => 'data:image/jpeg;base64,AA==',
+      generateStructuredNotes: async ({ messages }) => {
+        sentMessages = messages;
+        return {
+          notes: {
+            summary: 'Connected syntax and semantics.',
+            chapters: [{ title: 'Semantics', partIndex: 2, startSec: 12, endSec: 20, bullets: ['Models'], formulas: [], slideRefs: [0] }],
+            definitions: [{ term: 'Model', definition: 'Truth assignment', partIndex: 2, timestampSec: 12 }],
+            examRadar: [{ type: 'deadline', text: 'HW3', partIndex: 1, timestampSec: 12, dueDate: '2026-11-24' }],
+          },
+          costUsd: 0.01,
+        };
+      },
+    };
+    const res = await runLessonPipeline({
+      lessonId: 'auto:2026-11-17:math_logic',
+      lectureIds: ['p1', 'p2'],
+      subject: 'Math Logic',
+      previousLessonSummary: 'Last week covered propositional calculus.',
+      deps,
+    });
+    assert.match(sentMessages[1].content[0].text, /Last week covered propositional calculus/);
+    assert.match(sentMessages[1].content[0].text, /\[Pt 1 · 00:12/);
+    assert.match(sentMessages[1].content[0].text, /\[Pt 2 · 00:12/);
+    assert.equal(res.notes.isMultiPart, true);
+    assert.equal(res.notes.chapters[0].partId, 'p2');
+    assert.equal(res.notes.totalCostUsd, 0.014);
+    assert.ok(savedLesson['auto:2026-11-17:math_logic/notes.json']);
+    assert.equal(lectures.p1.status, 'ready');
+    assert.equal(lectures.p2.status, 'ready');
   });
 });

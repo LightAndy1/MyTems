@@ -73,8 +73,9 @@ export function parseNotesJson(rawText) {
  * Transcribe one audio chunk via OpenRouter or a local OpenAI-compatible STT endpoint.
  * Intentionally omits any `language` field so Whisper auto-detects RO/EN.
  */
-export async function transcribeAudioSegment({ settings, blob, filename, fetchImpl = fetch }) {
+export async function transcribeAudioSegment({ settings, blob, filename, prompt = '', fetchImpl = fetch }) {
   const isLocal = settings.providerMode === 'local';
+  const trimmedPrompt = String(prompt || '').trim();
   let res;
   if (isLocal) {
     if (!settings.localSttUrl?.trim()) throw new Error('Missing Local STT URL in Settings.');
@@ -82,6 +83,7 @@ export async function transcribeAudioSegment({ settings, blob, filename, fetchIm
     form.append('file', blob, filename);
     form.append('model', settings.localSttModel);
     form.append('response_format', 'verbose_json');
+    if (trimmedPrompt) form.append('prompt', trimmedPrompt);
     res = await fetchWithRetry(settings.localSttUrl, { method: 'POST', body: form }, 3, fetchImpl);
   } else {
     if (!settings.openrouterApiKey) throw new Error('Missing OpenRouter API key in Settings.');
@@ -98,6 +100,7 @@ export async function transcribeAudioSegment({ settings, blob, filename, fetchIm
           model: settings.sttModel,
           input_audio: { data, format: 'webm' },
           response_format: 'verbose_json',
+          ...(trimmedPrompt ? { prompt: trimmedPrompt } : {}),
         }),
       },
       3,

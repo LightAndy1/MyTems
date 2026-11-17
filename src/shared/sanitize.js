@@ -1,3 +1,8 @@
+const RO_MAP = {
+  ă: 'a', â: 'a', î: 'i', ș: 's', ş: 's', ț: 't', ţ: 't',
+  Ă: 'A', Â: 'A', Î: 'I', Ș: 'S', Ş: 'S', Ț: 'T', Ţ: 'T',
+};
+
 export function deriveLectureTitle(tabTitle) {
   const cleaned = String(tabTitle || '')
     .replace(/\s*\|\s*Microsoft Teams\s*$/i, '')
@@ -7,11 +12,47 @@ export function deriveLectureTitle(tabTitle) {
 }
 
 export function toSafeFilename(title) {
-  const safe = String(title || '')
+  const transliterated = String(title || '').replace(/[ăâîșşțţĂÂÎȘŞȚŢ]/g, (ch) => RO_MAP[ch] || ch);
+  const safe = transliterated
     .replace(/[^a-zA-Z0-9+._-]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 80);
   return safe || 'Teams_Lecture';
+}
+
+export function formatLocalDateTimeParts(dateInput) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput || Date.now());
+  const valid = Number.isFinite(d.getTime()) ? d : new Date(0);
+  const pad = (n) => String(n).padStart(2, '0');
+  const date = `${valid.getFullYear()}-${pad(valid.getMonth() + 1)}-${pad(valid.getDate())}`;
+  const hh = pad(valid.getHours());
+  const mm = pad(valid.getMinutes());
+  return { date, time: `${hh}-${mm}`, displayTime: `${hh}:${mm}` };
+}
+
+export function buildDownloadFilename(
+  lecture,
+  { partIndex = 1, totalParts = 1, kind = 'video', lessonTitle = '' } = {}
+) {
+  const lec = lecture || {};
+  const { date, time } = formatLocalDateTimeParts(lec.startedAtMs || lec.createdAt);
+  if (kind === 'lesson-zip') {
+    const safeLesson = toSafeFilename(lessonTitle || lec.lessonTitle || lec.subject || lec.title);
+    return `${date}_${safeLesson}_lesson_notion.zip`;
+  }
+  const safeTitle = toSafeFilename(lec.title);
+  const partSuffix = totalParts > 1 ? `_pt${partIndex}` : '';
+  const ext = kind === 'notion-zip' ? '_notion.zip' : '.webm';
+  return `${date}_${time}_${safeTitle}${partSuffix}${ext}`;
+}
+
+export function buildTranscriptTailPrompt(text, maxChars = 220) {
+  const clean = String(text || '').trim().replace(/\s+/g, ' ');
+  if (!clean || clean.length <= maxChars) return clean;
+  const slice = clean.slice(-maxChars);
+  if (clean[clean.length - maxChars - 1] === ' ') return slice;
+  const spaceIdx = slice.indexOf(' ');
+  return spaceIdx > 0 && spaceIdx < slice.length - 1 ? slice.slice(spaceIdx + 1) : slice;
 }
 
 export function formatTimestamp(totalSec) {

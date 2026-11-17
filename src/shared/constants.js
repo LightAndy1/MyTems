@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS = {
   openrouterApiKey: '',
   sttModel: 'openai/whisper-large-v3',
   llmModel: 'google/gemini-2.5-flash',
+  providerRouting: 'auto',
+  preferredProviders: '',
   localSttUrl: 'http://localhost:8080/v1/audio/transcriptions',
   localSttModel: 'whisper-1',
   localLlmUrl: 'http://localhost:11434/v1/chat/completions',

@@ -85,6 +85,90 @@ export function buildVisionMessages(transcript, slidePayloads, courseHint = '') 
   ];
 }
 
+async function ensureTranscript({
+  lectureId,
+  lecture,
+  settings,
+  activeHint,
+  force = false,
+  onStage,
+  resolvedDeps,
+}) {
+  let transcript = force ? null : await resolvedDeps.readLectureJson(lectureId, 'transcript.json');
+  if (transcript) return { transcript, ranStt: false };
+
+  await resolvedDeps.upsertLecture({ id: lectureId, status: 'transcribing', courseHint: activeHint, error: '' });
+  onStage('Transcribing audio...');
+
+  const segmentsMeta = lecture.audioSegments?.length
+    ? lecture.audioSegments
+    : (await resolvedDeps.listDirFiles(lectureId, 'audio')).map((f, i) => ({
+        filename: `audio/${f}`,
+        offsetSec: i * 600,
+      }));
+  if (segmentsMeta.length === 0) {
+    throw new Error('No audio segments found for transcription.');
+  }
+
+  const chunkResults = [];
+  for (let i = 0; i < segmentsMeta.length; i++) {
+    onStage(`Transcribing part ${i + 1}/${segmentsMeta.length}...`);
+    const seg = segmentsMeta[i];
+    const blob = await resolvedDeps.readLectureFile(lectureId, seg.filename);
+    const result = await resolvedDeps.transcribeAudioSegment({
+      settings,
+      blob,
+      filename: seg.filename.split('/').pop(),
+    });
+    chunkResults.push({ offsetSec: seg.offsetSec, result });
+  }
+  transcript = mergeTranscriptSegments(chunkResults);
+  await resolvedDeps.writeLectureJson(lectureId, 'transcript.json', transcript);
+  return { transcript, ranStt: true };
+}
+
+/**
+ * Run transcription only (Stage 1 STT, $0 LLM) and save transcript.json.
+ */
+export async function runTranscriptionOnly({
+  lectureId,
+  courseHint,
+  force = false,
+  onStage = () => {},
+  deps = DEFAULT_DEPS,
+}) {
+  const resolvedDeps = deps === DEFAULT_DEPS ? DEFAULT_DEPS : { ...DEFAULT_DEPS, ...deps };
+  const [lecture, settings] = await Promise.all([
+    resolvedDeps.getLecture(lectureId),
+    resolvedDeps.getSettings(),
+  ]);
+  if (!lecture) throw new Error(`Lecture ${lectureId} not found`);
+  const activeHint = (courseHint ?? lecture.courseHint ?? settings.defaultCourseHint ?? '').trim();
+
+  try {
+    const { transcript } = await ensureTranscript({
+      lectureId,
+      lecture,
+      settings,
+      activeHint,
+      force,
+      onStage,
+      resolvedDeps,
+    });
+    const existingNotes = await resolvedDeps.readLectureJson(lectureId, 'notes.json');
+    await resolvedDeps.upsertLecture({
+      id: lectureId,
+      status: existingNotes ? 'ready' : 'transcribed',
+      courseHint: activeHint,
+      error: '',
+    });
+    return { transcript };
+  } catch (err) {
+    await resolvedDeps.upsertLecture({ id: lectureId, status: 'error', error: err?.message || String(err) });
+    throw err;
+  }
+}
+
 /**
  * Run the checkpointed lecture processing pipeline: STT -> slide extraction -> multimodal notes.
  */
@@ -103,33 +187,15 @@ export async function runLecturePipeline({
   const activeHint = (courseHint ?? lecture.courseHint ?? settings.defaultCourseHint ?? '').trim();
 
   try {
-    let transcript = await resolvedDeps.readLectureJson(lectureId, 'transcript.json');
-    if (!transcript) {
-      await resolvedDeps.upsertLecture({ id: lectureId, status: 'transcribing', courseHint: activeHint, error: '' });
-      onStage('Transcribing audio...');
-
-      const segmentsMeta = lecture.audioSegments?.length
-        ? lecture.audioSegments
-        : (await resolvedDeps.listDirFiles(lectureId, 'audio')).map((f, i) => ({
-            filename: `audio/${f}`,
-            offsetSec: i * 600,
-          }));
-
-      const chunkResults = [];
-      for (let i = 0; i < segmentsMeta.length; i++) {
-        onStage(`Transcribing part ${i + 1}/${segmentsMeta.length}...`);
-        const seg = segmentsMeta[i];
-        const blob = await resolvedDeps.readLectureFile(lectureId, seg.filename);
-        const result = await resolvedDeps.transcribeAudioSegment({
-          settings,
-          blob,
-          filename: seg.filename.split('/').pop(),
-        });
-        chunkResults.push({ offsetSec: seg.offsetSec, result });
-      }
-      transcript = mergeTranscriptSegments(chunkResults);
-      await resolvedDeps.writeLectureJson(lectureId, 'transcript.json', transcript);
-    }
+    const { transcript } = await ensureTranscript({
+      lectureId,
+      lecture,
+      settings,
+      activeHint,
+      force: false,
+      onStage,
+      resolvedDeps,
+    });
 
     onStage('Extracting slides...');
     await resolvedDeps.upsertLecture({ id: lectureId, status: 'extracting_slides' });

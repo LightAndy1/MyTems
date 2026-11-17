@@ -7,11 +7,13 @@ import {
   blobToDataUrl,
   transcribeAudioSegment,
   generateStructuredNotes,
+  buildOpenRouterProviderConfig,
 } from '../src/dashboard/ai-client.js';
 import {
   mergeTranscriptSegments,
   buildVisionMessages,
   runLecturePipeline,
+  runTranscriptionOnly,
 } from '../src/dashboard/pipeline.js';
 
 describe('AI pipeline & client helpers', () => {
@@ -341,7 +343,8 @@ describe('AI pipeline & client helpers', () => {
             getLecture: async () => ({ id: 'lec-err', audioSegments: [] }),
             getSettings: async () => ({ providerMode: 'cloud', openrouterApiKey: '' }),
             upsertLecture: async (p) => { patches.push(p); },
-            readLectureJson: async () => null,
+            readLectureJson: async (_id, path) =>
+              path === 'transcript.json' ? { segments: [], fullText: '', sttCostUsd: 0 } : null,
             writeLectureJson: async () => {},
             readLectureFile: async () => { throw new Error('NotFoundError'); },
             listDirFiles: async () => [],
@@ -358,5 +361,69 @@ describe('AI pipeline & client helpers', () => {
       status: 'error',
       error: 'Missing OpenRouter API key in Settings.',
     });
+  });
+
+  it('builds OpenRouter provider routing config and sends it on cloud LLM calls', async () => {
+    assert.equal(buildOpenRouterProviderConfig({ providerRouting: 'auto', preferredProviders: '' }), undefined);
+    assert.deepEqual(
+      buildOpenRouterProviderConfig({ providerRouting: 'price', preferredProviders: ' relace , deepinfra ' }),
+      { sort: 'price', order: ['relace', 'deepinfra'], allow_fallbacks: true }
+    );
+
+    let sentBody = null;
+    await generateStructuredNotes({
+      settings: {
+        providerMode: 'cloud',
+        openrouterApiKey: 'sk-test',
+        llmModel: 'z-ai/glm-5.3-flash',
+        providerRouting: 'price',
+        preferredProviders: 'relace',
+      },
+      messages: [{ role: 'user', content: 'hi' }],
+      fetchImpl: async (_url, init) => {
+        sentBody = JSON.parse(init.body);
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"summary":"ok","chapters":[]}' } }] }),
+          { status: 200 }
+        );
+      },
+    });
+    assert.deepEqual(sentBody.provider, { sort: 'price', order: ['relace'], allow_fallbacks: true });
+  });
+
+  it('runs transcription only without calling slide extraction or LLM', async () => {
+    let llmCalls = 0;
+    let slideCalls = 0;
+    const patches = [];
+    const written = {};
+    const res = await runTranscriptionOnly({
+      lectureId: 'lec-stt-only',
+      deps: {
+        getLecture: async () => ({
+          id: 'lec-stt-only',
+          audioSegments: [{ filename: 'audio/000.webm', offsetSec: 0 }],
+        }),
+        getSettings: async () => ({ providerMode: 'cloud', openrouterApiKey: 'sk', sttModel: 'whisper-large-v3' }),
+        upsertLecture: async (p) => { patches.push(p); },
+        readLectureJson: async () => null,
+        writeLectureJson: async (_id, path, obj) => { written[path] = obj; },
+        readLectureFile: async () => new Blob(['audio']),
+        listDirFiles: async () => [],
+        transcribeAudioSegment: async () => ({
+          language: 'ro',
+          text: 'Test STT',
+          segments: [{ startSec: 0, endSec: 2, text: 'Test STT' }],
+          costUsd: 0.005,
+        }),
+        extractSlidesFromVideo: async () => { slideCalls += 1; return []; },
+        generateStructuredNotes: async () => { llmCalls += 1; return {}; },
+        blobToDataUrl: async () => '',
+      },
+    });
+    assert.equal(llmCalls, 0);
+    assert.equal(slideCalls, 0);
+    assert.equal(res.transcript.fullText, 'Test STT');
+    assert.ok(written['transcript.json']);
+    assert.equal(patches.at(-1).status, 'transcribed');
   });
 });

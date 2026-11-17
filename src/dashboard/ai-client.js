@@ -123,6 +123,26 @@ export async function transcribeAudioSegment({ settings, blob, filename, fetchIm
 }
 
 /**
+ * Build OpenRouter provider routing object from settings, or undefined when default.
+ */
+export function buildOpenRouterProviderConfig(settings) {
+  const order = String(settings?.preferredProviders || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const sort =
+    settings?.providerRouting === 'price' || settings?.providerRouting === 'throughput'
+      ? settings.providerRouting
+      : undefined;
+  if (!sort && order.length === 0) return undefined;
+  return {
+    ...(sort ? { sort } : {}),
+    ...(order.length ? { order } : {}),
+    allow_fallbacks: true,
+  };
+}
+
+/**
  * Generate structured study notes and Exam Radar JSON from multimodal chat messages.
  */
 export async function generateStructuredNotes({ settings, messages, fetchImpl = fetch }) {
@@ -135,6 +155,7 @@ export async function generateStructuredNotes({ settings, messages, fetchImpl = 
     if (!settings.openrouterApiKey) throw new Error('Missing OpenRouter API key in Settings.');
     headers.Authorization = `Bearer ${settings.openrouterApiKey}`;
   }
+  const provider = isLocal ? undefined : buildOpenRouterProviderConfig(settings);
   const res = await fetchWithRetry(
     url,
     {
@@ -145,6 +166,7 @@ export async function generateStructuredNotes({ settings, messages, fetchImpl = 
         messages,
         response_format: { type: 'json_object' },
         temperature: 0.2,
+        ...(provider ? { provider } : {}),
       }),
     },
     3,

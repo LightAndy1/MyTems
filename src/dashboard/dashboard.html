@@ -8,79 +8,130 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="sidebar-head">
-          <h1>MyTems</h1>
-          <button id="openSettingsBtn" class="ghost-btn" title="Settings">⚙ Settings</button>
+      <aside class="rail">
+        <div class="rail-head">
+          <div class="brand-lockup">
+            <svg class="brand-mark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="14" rx="3" />
+              <path d="M9 10l5 3-5 3v-6z" fill="currentColor" stroke="none" />
+              <path d="M7 21h10" stroke-linecap="round" />
+            </svg>
+            <h1>MyTems</h1>
+          </div>
+          <button id="openSettingsBtn" class="btn btn-icon" title="Settings" aria-label="Open Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            <span>Settings</span>
+          </button>
         </div>
-        <input id="lectureFilter" class="search-input" type="search" placeholder="Filter lectures..." />
+
+        <input id="lectureFilter" class="search-input" type="search" placeholder="Search lectures..." aria-label="Search lectures" />
         <ul id="lectureList" class="lecture-list"></ul>
       </aside>
 
-      <main id="detailPane" class="detail-pane">
+      <main class="main">
         <div id="emptyState" class="empty-state">
-          <h2>Select a lecture</h2>
-          <p>Record a Teams lecture from the toolbar, then transcribe and summarize on demand.</p>
+          <h2>No lecture selected</h2>
+          <p>Record a Teams tab from the toolbar icon ($0 cost), then choose a lecture on the left to transcribe or summarize.</p>
+          <ol class="guide-steps">
+            <li><strong>Record locally:</strong> Capture Teams video and segmented Opus audio directly in Helium.</li>
+            <li><strong>Transcribe Only or Generate Notes:</strong> Run speech-to-text alone ($0 LLM) or full slide-aware notes + Exam Radar.</li>
+            <li><strong>Jump &amp; Export:</strong> Click any <code>MM:SS</code> cue or slide to seek video, then export clean Markdown to Notion.</li>
+          </ol>
         </div>
 
         <section id="lectureView" class="lecture-view" hidden>
-          <header class="lecture-header">
-            <div>
+          <header class="topbar">
+            <div class="title-block">
               <h2 id="lecTitle"></h2>
-              <p id="lecMeta" class="muted"></p>
+              <p id="lecMeta" class="meta-line"></p>
+              <div class="hint-row">
+                <label class="hint-label" for="lecCourseHint">Course hint</label>
+                <input id="lecCourseHint" class="hint-input" type="text" placeholder="Optional topic (improves RO + EN technical terms)" />
+              </div>
             </div>
+
             <div class="actions">
-              <button id="downloadVideoBtn" class="ghost-btn">Download Video</button>
-              <button id="freeMediaBtn" class="ghost-btn">Free Media Space</button>
-              <button id="deleteLectureBtn" class="danger-btn">Delete</button>
+              <button id="transcribeOnlyBtn" class="btn" title="Run speech-to-text only ($0 LLM)">Transcribe Only</button>
+              <button id="summarizeBtn" class="btn btn-primary">Generate Notes</button>
+              <button id="copyNotionBtn" class="btn" disabled>Copy Notion MD</button>
+              <button id="zipNotionBtn" class="btn" disabled>Export .zip</button>
+
+              <details id="storageMenu" class="menu-wrap">
+                <summary class="btn btn-icon-only" title="Storage & file actions" aria-label="Storage and file actions">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+                  </svg>
+                </summary>
+                <div class="menu-panel" role="menu">
+                  <button id="downloadVideoBtn" class="menu-item" type="button" role="menuitem">Download Video (.webm)</button>
+                  <button id="freeMediaBtn" class="menu-item" type="button" role="menuitem">Free Media Space (keep notes)</button>
+                  <button id="deleteLectureBtn" class="menu-item menu-danger" type="button" role="menuitem">Delete Lecture</button>
+                </div>
+              </details>
             </div>
           </header>
 
-          <div class="controls-bar">
-            <input id="lecCourseHint" type="text" placeholder="Course hint (optional, improves RO+EN terms)" />
-            <button id="summarizeBtn" class="primary-btn">Transcribe & Summarize</button>
-            <button id="copyNotionBtn" class="ghost-btn" disabled>Copy Notion MD</button>
-            <button id="zipNotionBtn" class="ghost-btn" disabled>Export Notion .zip</button>
+          <p id="statusBanner" class="status-banner" role="status" hidden></p>
+
+          <div class="stage-grid">
+            <section class="media-col">
+              <div class="player-shell">
+                <video id="videoPlayer" controls></video>
+                <div id="mediaFreedNote" class="media-freed" hidden>
+                  <strong>Raw video and audio deleted to save space.</strong>
+                  <span>Notes, transcript, and extracted slides stay saved locally.</span>
+                </div>
+              </div>
+
+              <div class="media-tools">
+                <button id="snapSlideBtn" class="btn" type="button" hidden>Snap Slide at Current Time</button>
+                <button id="attachImagesBtn" class="btn" type="button">Attach Whiteboard / Slide</button>
+                <input id="attachImagesInput" type="file" accept="image/*" multiple hidden />
+              </div>
+
+              <section id="slidesStrip" class="slides-strip" hidden>
+                <div class="section-head">
+                  <h3>Slides &amp; Attachments</h3>
+                  <span id="slidesCount" class="count-label"></span>
+                </div>
+                <div id="slidesGrid" class="slides-grid"></div>
+              </section>
+            </section>
+
+            <section class="desk-col">
+              <section id="radarCard" class="radar-card" hidden>
+                <h3>Exam &amp; Deadline Radar</h3>
+                <ul id="radarList" class="radar-list"></ul>
+              </section>
+
+              <section id="unprocessedCard" class="prompt-card" hidden>
+                <h3>Ready to process</h3>
+                <p>Run <strong>Transcribe Only</strong> for searchable RO/EN text without LLM spend, or <strong>Generate Notes</strong> to extract slides, chapters, formulas, and Exam Radar.</p>
+              </section>
+
+              <section id="studyCard" class="study-card" hidden>
+                <div class="study-tabs" role="tablist">
+                  <button id="tabNotesBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">Study Notes</button>
+                  <button id="tabTranscriptBtn" class="tab-btn" type="button" role="tab" aria-selected="false">Transcript</button>
+                  <span id="costReceipt" class="cost-pill" hidden></span>
+                </div>
+
+                <div id="notesTabPanel" class="tab-panel">
+                  <p id="notesSummary" class="summary-copy"></p>
+                  <div id="chaptersContainer" class="chapters"></div>
+                  <div id="definitionsContainer" class="definitions"></div>
+                </div>
+
+                <div id="transcriptTabPanel" class="tab-panel" hidden>
+                  <input id="transcriptSearch" class="transcript-search" type="search" placeholder="Filter transcript..." aria-label="Filter transcript" />
+                  <div id="transcriptLines" class="transcript-lines"></div>
+                </div>
+              </section>
+            </section>
           </div>
-          <p id="statusBanner" class="status-banner" hidden></p>
-
-          <div class="player-wrap">
-            <video id="videoPlayer" controls></video>
-            <div id="mediaFreedNote" class="media-freed" hidden>Raw video/audio freed — notes, transcript, and slides remain saved locally.</div>
-            <div class="actions">
-              <button id="snapSlideBtn" class="ghost-btn" hidden>Snap Slide at Current Time</button>
-              <button id="attachImagesBtn" class="ghost-btn">Attach Whiteboard / Slide Image</button>
-              <input id="attachImagesInput" type="file" accept="image/*" multiple hidden />
-            </div>
-          </div>
-
-          <section id="radarCard" class="radar-card" hidden>
-            <h3>Exam & Deadline Radar</h3>
-            <ul id="radarList"></ul>
-          </section>
-
-          <section id="slidesStrip" class="slides-strip" hidden>
-            <h3>Extracted Slides</h3>
-            <div id="slidesGrid" class="slides-grid"></div>
-          </section>
-
-          <section id="notesSection" class="notes-section" hidden>
-            <div class="notes-head">
-              <h3>Study Notes</h3>
-              <span id="costReceipt" class="cost-pill"></span>
-            </div>
-            <p id="notesSummary"></p>
-            <div id="chaptersContainer"></div>
-            <div id="definitionsContainer"></div>
-          </section>
-
-          <section id="transcriptSection" class="transcript-section" hidden>
-            <div class="notes-head">
-              <h3>Transcript</h3>
-              <input id="transcriptSearch" type="search" placeholder="Search transcript..." />
-            </div>
-            <div id="transcriptLines" class="transcript-lines"></div>
-          </section>
         </section>
       </main>
     </div>
@@ -89,7 +140,11 @@
       <form id="settingsForm" method="dialog" class="modal-card">
         <header class="modal-head">
           <h2>Settings</h2>
-          <button type="button" id="closeSettingsBtn" class="ghost-btn">✕</button>
+          <button type="button" id="closeSettingsBtn" class="btn btn-icon-only" aria-label="Close Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
         </header>
 
         <div class="segmented" role="group" aria-label="AI Provider Mode">
@@ -98,23 +153,55 @@
         </div>
 
         <div id="cloudFields" class="field-group">
-          <label>OpenRouter API Key <input name="openrouterApiKey" type="password" placeholder="sk-or-v1-..." /></label>
-          <label>STT Model <input name="sttModel" type="text" /></label>
-          <label>Vision / Summary Model <input name="llmModel" type="text" /></label>
+          <label>
+            <span>OpenRouter API Key</span>
+            <input name="openrouterApiKey" type="password" placeholder="sk-or-v1-..." autocomplete="off" />
+          </label>
+          <div class="two-col">
+            <label>
+              <span>STT Model</span>
+              <input name="sttModel" type="text" placeholder="openai/whisper-large-v3" />
+            </label>
+            <label>
+              <span>Summary &amp; Vision Model</span>
+              <input name="llmModel" type="text" placeholder="google/gemini-2.5-flash" />
+            </label>
+          </div>
+          <div class="two-col">
+            <label>
+              <span>Provider Routing</span>
+              <select name="providerRouting">
+                <option value="auto">Default (Auto)</option>
+                <option value="price">Cheapest (sort: price)</option>
+                <option value="throughput">Fastest (sort: throughput)</option>
+              </select>
+            </label>
+            <label>
+              <span>Preferred Providers (optional)</span>
+              <input name="preferredProviders" type="text" placeholder="e.g. relace, deepinfra" />
+            </label>
+          </div>
         </div>
 
         <div id="localFields" class="field-group" hidden>
-          <label>Local STT URL <input name="localSttUrl" type="url" /></label>
-          <label>Local STT Model <input name="localSttModel" type="text" /></label>
-          <label>Local LLM URL <input name="localLlmUrl" type="url" /></label>
-          <label>Local Vision/LLM Model <input name="localLlmModel" type="text" /></label>
+          <div class="two-col">
+            <label><span>Local STT URL</span><input name="localSttUrl" type="url" /></label>
+            <label><span>Local STT Model</span><input name="localSttModel" type="text" /></label>
+          </div>
+          <div class="two-col">
+            <label><span>Local LLM URL</span><input name="localLlmUrl" type="url" /></label>
+            <label><span>Local Vision/LLM Model</span><input name="localLlmModel" type="text" /></label>
+          </div>
         </div>
 
-        <label>Default Course Hint <input name="defaultCourseHint" type="text" placeholder="e.g. Algorithms" /></label>
-        <p class="muted small">Language detection and note output language are automatic (RO/EN).</p>
+        <label>
+          <span>Default Course Hint</span>
+          <input name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
+        </label>
+        <p class="helper-note">Language detection and note output language are automatic (RO/EN). Tip: for GLM-5.3-Flash, pick Cheapest routing or list a provider slug.</p>
 
         <footer class="modal-foot">
-          <button type="submit" class="primary-btn">Save Settings</button>
+          <button type="submit" class="btn btn-primary">Save Settings</button>
         </footer>
       </form>
     </dialog>

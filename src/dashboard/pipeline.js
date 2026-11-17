@@ -9,7 +9,7 @@ import {
   writeLessonJson,
 } from '../shared/opfs.js';
 import { extractSlidesFromVideo } from './slides.js';
-import { blobToDataUrl, generateStructuredNotes, transcribeAudioSegment } from './ai-client.js';
+import { blobToDataUrl, calibrateExamRadarWithJev, generateStructuredNotes, transcribeAudioSegment } from './ai-client.js';
 
 const DEFAULT_DEPS = {
   getLecture,
@@ -24,8 +24,20 @@ const DEFAULT_DEPS = {
   transcribeAudioSegment,
   extractSlidesFromVideo,
   generateStructuredNotes,
+  calibrateExamRadarWithJev,
   blobToDataUrl,
 };
+
+async function maybeCalibrateExamRadar({ examRadar, summary, settings, resolvedDeps }) {
+  if (!settings?.jevEnabled || !settings?.openrouterApiKey || !Array.isArray(examRadar) || examRadar.length === 0) {
+    return { items: Array.isArray(examRadar) ? examRadar : [], costUsd: 0 };
+  }
+  try {
+    return await resolvedDeps.calibrateExamRadarWithJev(examRadar, summary, settings);
+  } catch {
+    return { items: examRadar, costUsd: 0 };
+  }
+}
 
 /**
  * Merge chunked STT results into a single timeline by adding each chunk's offsetSec.
@@ -252,12 +264,20 @@ export async function runLecturePipeline({
 
     const messages = buildVisionMessages(transcript, slidePayloads, activeHint);
     const { notes: rawNotes, costUsd } = await resolvedDeps.generateStructuredNotes({ settings, messages });
+    const { items: examRadar, costUsd: jevCostUsd } = await maybeCalibrateExamRadar({
+      examRadar: rawNotes.examRadar,
+      summary: rawNotes.summary,
+      settings,
+      resolvedDeps,
+    });
+    const totalLlmCost = costUsd + jevCostUsd;
     const notes = {
       ...rawNotes,
+      examRadar,
       slides,
       sttCostUsd: transcript.sttCostUsd || 0,
-      llmCostUsd: Number(costUsd.toFixed(6)),
-      totalCostUsd: Number(((transcript.sttCostUsd || 0) + costUsd).toFixed(6)),
+      llmCostUsd: Number(totalLlmCost.toFixed(6)),
+      totalCostUsd: Number(((transcript.sttCostUsd || 0) + totalLlmCost).toFixed(6)),
       generatedAt: new Date().toISOString(),
     };
     await resolvedDeps.writeLectureJson(lectureId, 'notes.json', notes);
@@ -469,17 +489,24 @@ export async function runLessonPipeline({
       return { ...item, partIndex, partId: lectureIds[partIndex - 1] };
     };
 
+    const taggedExamRadar = (rawNotes.examRadar || []).map(withPart);
+    const { items: examRadar, costUsd: jevCostUsd } = await maybeCalibrateExamRadar({
+      examRadar: taggedExamRadar,
+      summary: rawNotes.summary,
+      settings,
+      resolvedDeps,
+    });
     const sttCostUsd = Number(
       Object.values(transcriptsById)
         .reduce((sum, t) => sum + Number(t?.sttCostUsd || 0), 0)
         .toFixed(6)
     );
-    const llmCostUsd = Number(costUsd.toFixed(6));
+    const llmCostUsd = Number((costUsd + jevCostUsd).toFixed(6));
     const notes = {
       ...rawNotes,
       chapters: (rawNotes.chapters || []).map(withPart),
       definitions: (rawNotes.definitions || []).map(withPart),
-      examRadar: (rawNotes.examRadar || []).map(withPart),
+      examRadar,
       isMultiPart: true,
       partsMeta: partsPayload.map((p) => ({
         partIndex: p.partIndex,

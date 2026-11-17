@@ -589,4 +589,53 @@ describe('AI pipeline & client helpers', () => {
     assert.equal(lectures.p1.status, 'ready');
     assert.equal(lectures.p2.status, 'ready');
   });
+
+  it('calibrates examRadar via Jev when jevEnabled is true and skips when false', async () => {
+    let jevCalls = 0;
+    const makeDeps = (jevEnabled) => ({
+      getLecture: async () => ({
+        id: 'lec_jev',
+        title: 'Algorithms',
+        slidesExtracted: true,
+        audioSegments: [{ filename: 'audio/000.webm', offsetSec: 0 }],
+      }),
+      getSettings: async () => ({
+        providerMode: 'cloud',
+        openrouterApiKey: 'sk-or-test',
+        sttModel: 'w',
+        llmModel: 'g',
+        jevEnabled,
+        jevModel: 'typesafe/jev-latest',
+      }),
+      upsertLecture: async (p) => p,
+      readLectureJson: async (_id, name) =>
+        name === 'transcript.json'
+          ? { segments: [{ startSec: 0, endSec: 5, text: 'Midterm next week' }], fullText: 'Midterm next week', sttCostUsd: 0 }
+          : null,
+      writeLectureJson: async () => {},
+      listDirFiles: async () => [],
+      generateStructuredNotes: async () => ({
+        notes: {
+          summary: 'Algorithms lecture.',
+          chapters: [],
+          definitions: [],
+          examRadar: [{ type: 'exam_hint', text: 'Midterm next week', timestampSec: 0, dueDate: null }],
+        },
+        costUsd: 0.01,
+      }),
+      calibrateExamRadarWithJev: async (items) => {
+        jevCalls += 1;
+        return { items: items.map((item) => ({ ...item, confidence: 0.94 })), costUsd: 0.001 };
+      },
+    });
+
+    const offRes = await runLecturePipeline({ lectureId: 'lec_jev', deps: makeDeps(false) });
+    assert.equal(jevCalls, 0);
+    assert.equal(offRes.notes.examRadar[0].confidence, undefined);
+
+    const onRes = await runLecturePipeline({ lectureId: 'lec_jev', deps: makeDeps(true) });
+    assert.equal(jevCalls, 1);
+    assert.equal(onRes.notes.examRadar[0].confidence, 0.94);
+    assert.equal(onRes.notes.totalCostUsd, 0.011);
+  });
 });

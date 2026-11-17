@@ -47,12 +47,17 @@ function startAudioSegment(targetSession, lectureId, audioStream, startedAtMs, i
     });
   };
   let segment;
-  const stopped = new Promise((resolve) => {
+  const stopped = new Promise((resolve, reject) => {
     recorder.onstop = async () => {
-      await writeChain;
-      await callWorker({ type: 'close', lectureId, relPath });
-      targetSession.activeAudios.delete(segment);
-      resolve();
+      try {
+        await writeChain;
+        await callWorker({ type: 'close', lectureId, relPath });
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        targetSession.activeAudios.delete(segment);
+      }
     };
   });
   segment = { recorder, stopped };
@@ -115,11 +120,15 @@ async function startCapture({ lectureId, streamId }) {
       });
     };
 
-    const videoStopped = new Promise((resolve) => {
+    const videoStopped = new Promise((resolve, reject) => {
       videoRecorder.onstop = async () => {
-        await videoChain;
-        await callWorker({ type: 'close', lectureId, relPath: 'video.webm' });
-        resolve();
+        try {
+          await videoChain;
+          await callWorker({ type: 'close', lectureId, relPath: 'video.webm' });
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
       };
     });
 
@@ -162,11 +171,13 @@ async function startCapture({ lectureId, streamId }) {
     }, RECORDING_CONFIG.AUDIO_SEGMENT_MS);
 
     stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-      stopCapture().then((res) => {
-        if (res) {
-          chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED_EXTERNALLY', ...res }).catch(() => {});
-        }
-      });
+      stopCapture()
+        .then((res) => {
+          if (res) {
+            chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED_EXTERNALLY', ...res }).catch(() => {});
+          }
+        })
+        .catch(() => {});
     });
   } catch (err) {
     if (session) {
@@ -202,11 +213,14 @@ async function stopCapture() {
     if (seg.recorder.state === 'recording') seg.recorder.stop();
   }
 
-  await Promise.all([active.videoStopped, ...audioSegmentsToStop.map((seg) => seg.stopped)]);
-  await callWorker({ type: 'closeAll' });
-
-  for (const t of active.stream.getTracks()) t.stop();
-  await active.audioCtx.close().catch(() => {});
+  try {
+    await Promise.all([active.videoStopped, ...audioSegmentsToStop.map((seg) => seg.stopped)]);
+    await callWorker({ type: 'closeAll' });
+  } finally {
+    await callWorker({ type: 'closeAll' }).catch(() => {});
+    for (const t of active.stream.getTracks()) t.stop();
+    await active.audioCtx.close().catch(() => {});
+  }
 
   return {
     lectureId: active.lectureId,

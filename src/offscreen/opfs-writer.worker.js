@@ -1,23 +1,35 @@
 const handles = new Map();
+const inFlightHandles = new Map();
+let opQueue = Promise.resolve();
 
 async function getHandle(lectureId, relPath) {
   const key = `${lectureId}/${relPath}`;
   if (handles.has(key)) return handles.get(key);
-  const root = await navigator.storage.getDirectory();
-  const lectures = await root.getDirectoryHandle('lectures', { create: true });
-  let dir = await lectures.getDirectoryHandle(lectureId, { create: true });
-  const parts = relPath.split('/').filter(Boolean);
-  const fileName = parts.pop();
-  for (const seg of parts) dir = await dir.getDirectoryHandle(seg, { create: true });
-  const fh = await dir.getFileHandle(fileName, { create: true });
-  const access = await fh.createSyncAccessHandle();
-  const state = { access, offset: access.getSize() };
-  handles.set(key, state);
-  return state;
+  if (inFlightHandles.has(key)) return inFlightHandles.get(key);
+
+  const opening = (async () => {
+    const root = await navigator.storage.getDirectory();
+    const lectures = await root.getDirectoryHandle('lectures', { create: true });
+    let dir = await lectures.getDirectoryHandle(lectureId, { create: true });
+    const parts = relPath.split('/').filter(Boolean);
+    const fileName = parts.pop();
+    for (const seg of parts) dir = await dir.getDirectoryHandle(seg, { create: true });
+    const fh = await dir.getFileHandle(fileName, { create: true });
+    const access = await fh.createSyncAccessHandle();
+    const state = { access, offset: access.getSize() };
+    handles.set(key, state);
+    return state;
+  })();
+
+  inFlightHandles.set(key, opening);
+  try {
+    return await opening;
+  } finally {
+    inFlightHandles.delete(key);
+  }
 }
 
-self.onmessage = async (event) => {
-  const { id, type, lectureId, relPath, bytes } = event.data;
+async function handleMessage({ id, type, lectureId, relPath, bytes }) {
   try {
     if (type === 'append') {
       const state = await getHandle(lectureId, relPath);
@@ -44,4 +56,8 @@ self.onmessage = async (event) => {
   } catch (err) {
     self.postMessage({ id, ok: false, error: err?.message || String(err) });
   }
+}
+
+self.onmessage = (event) => {
+  opQueue = opQueue.then(() => handleMessage(event.data));
 };

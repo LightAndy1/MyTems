@@ -60,16 +60,25 @@ async function handleStart({ tabId, tabTitle, streamId, courseHint }) {
   });
   await setActiveSession({ lectureId, tabId, title, startedAtMs });
 
-  const resp = await chrome.runtime.sendMessage({
-    type: 'OFFSCREEN_START_CAPTURE',
-    lectureId,
-    streamId,
-  });
-  if (!resp?.ok) {
-    await upsertLecture({ id: lectureId, status: 'error', error: resp?.error || 'Capture failed' });
-    await setActiveSession(null);
-    await updateBadge(false);
-    throw new Error(resp?.error || 'Capture failed');
+  try {
+    const resp = await chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_START_CAPTURE',
+      lectureId,
+      streamId,
+    });
+    if (!resp?.ok) {
+      throw new Error(resp?.error || 'Capture failed');
+    }
+  } catch (err) {
+    await upsertLecture({
+      id: lectureId,
+      status: 'error',
+      error: err?.message || 'Capture failed',
+    }).catch(() => {});
+    await setActiveSession(null).catch(() => {});
+    await updateBadge(false).catch(() => {});
+    await chrome.offscreen.closeDocument().catch(() => {});
+    throw err;
   }
   await updateBadge(true);
   return { lectureId, title, startedAtMs };

@@ -113,3 +113,9 @@ export function base64ToUint8(base64) {
   }
   return out;
 }
+
+export async function saveWhiteboardSlide({ lectureId, filename, base64 }, writeFileFn) {
+  if (!lectureId || !filename || !base64) throw new Error('Invalid whiteboard frame payload');
+  const bytes = base64ToUint8(base64);
+  await writeFileFn(lectureId, `slides/${filename}`, bytes);
+}

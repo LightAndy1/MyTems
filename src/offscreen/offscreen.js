@@ -1,4 +1,6 @@
 import { RECORDING_CONFIG } from '../shared/constants.js';
+import { writeLectureFile } from '../shared/opfs.js';
+import { saveWhiteboardSlide } from '../shared/whiteboard.js';
 import { computeOffsetSec, formatSegmentFilename, pickVideoMimeType } from './segment-math.js';
 
 const worker = new Worker(new URL('./opfs-writer.worker.js', import.meta.url));
@@ -244,6 +246,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'OFFSCREEN_STOP_CAPTURE') {
     stopCapture()
       .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true;
+  }
+  if (msg.type === 'OFFSCREEN_SAVE_WHITEBOARD_FRAME') {
+    saveWhiteboardSlide(msg, writeLectureFile)
+      .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
     return true;
   }

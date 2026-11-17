@@ -8,6 +8,7 @@ import {
   matchesWhiteboardMeeting,
   parseMeetingFilters,
   pickWhiteboardSurface,
+  saveWhiteboardSlide,
   shouldEnableWhiteboard,
   shouldSaveWhiteboardFrame,
   uint8ToBase64,
@@ -111,5 +112,20 @@ describe('whiteboard filenames, deduplication, and binary encoding', () => {
     const orig = new Uint8Array([0, 1, 127, 128, 254, 255]);
     const restored = base64ToUint8(uint8ToBase64(orig));
     assert.deepEqual(restored, orig);
+  });
+});
+
+describe('saveWhiteboardSlide', () => {
+  it('decodes base64 PNG and writes to slides/<filename>', async () => {
+    const writes = [];
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    await saveWhiteboardSlide(
+      { lectureId: 'lec_1', filename: '001_12_wb.png', base64: uint8ToBase64(bytes) },
+      async (id, relPath, data) => writes.push({ id, relPath, data })
+    );
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].id, 'lec_1');
+    assert.equal(writes[0].relPath, 'slides/001_12_wb.png');
+    assert.deepEqual(writes[0].data, bytes);
   });
 });

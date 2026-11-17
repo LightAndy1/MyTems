@@ -9,6 +9,9 @@ import {
   freeLectureMedia,
   deleteLectureDir,
   getLectureMediaBytes,
+  readLessonJson,
+  writeLessonJson,
+  deleteLessonDir,
 } from '../src/shared/opfs.js';
 
 function makeMemoryArea() {
@@ -92,6 +95,23 @@ describe('storage index and crash recovery', () => {
     assert.deepEqual(list.map((l) => l.id), ['b', 'a']);
     assert.equal((await s.getLecture('a')).status, 'ready');
     assert.equal((await s.getLecture('a')).title, 'Lecture A');
+  });
+
+  it('batch-updates selected lectures atomically with updateLectures', async () => {
+    const s = createStorage(makeMemoryArea());
+    await s.upsertLecture({ id: 'l1', title: 'Logic', createdAt: '2026-11-17T08:00:00Z' });
+    await s.upsertLecture({ id: 'l2', title: 'Logic', createdAt: '2026-11-17T09:00:00Z' });
+    await s.upsertLecture({ id: 'l3', title: 'Other', createdAt: '2026-11-17T10:00:00Z' });
+
+    const updated = await s.updateLectures(['l1', 'l2'], (lec) => ({
+      subject: 'Mathematical Logic',
+      lessonId: 'manual-logic',
+      lessonTitle: `Week 7 ${lec.title}`,
+    }));
+    assert.equal(updated.length, 2);
+    assert.equal((await s.getLecture('l1')).subject, 'Mathematical Logic');
+    assert.equal((await s.getLecture('l2')).lessonId, 'manual-logic');
+    assert.equal((await s.getLecture('l3')).subject, undefined);
   });
 });
 
@@ -200,5 +220,13 @@ describe('opfs lecture directory manager', () => {
     await deleteLectureDir('lec1');
     assert.equal(await getLectureMediaBytes('lec1'), 0);
     assert.equal(await readLectureJson('lec1', 'notes.json'), null);
+  });
+
+  it('writes, reads, and deletes lesson-level JSON in OPFS lessons directory', async () => {
+    await writeLessonJson('auto:2026-11-17:math', 'notes.json', { summary: 'Combined' });
+    const loaded = await readLessonJson('auto:2026-11-17:math', 'notes.json');
+    assert.deepEqual(loaded, { summary: 'Combined' });
+    await deleteLessonDir('auto:2026-11-17:math');
+    assert.equal(await readLessonJson('auto:2026-11-17:math', 'notes.json'), null);
   });
 });

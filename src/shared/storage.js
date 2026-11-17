@@ -52,6 +52,24 @@ export function createStorage(area) {
     });
   }
 
+  function updateLectures(ids, patchOrFn) {
+    const targetIds = new Set(ids || []);
+    return enqueueWrite(async () => {
+      if (targetIds.size === 0) return [];
+      const list = await listLectures();
+      const updated = [];
+      const next = list.map((lec) => {
+        if (!targetIds.has(lec.id)) return lec;
+        const patch = typeof patchOrFn === 'function' ? patchOrFn(lec) : patchOrFn;
+        const merged = { ...lec, ...patch };
+        updated.push(merged);
+        return merged;
+      });
+      if (updated.length > 0) await area.set({ [STORAGE_KEYS.LECTURES]: next });
+      return updated;
+    });
+  }
+
   async function getActiveSession() {
     const res = await area.get(STORAGE_KEYS.ACTIVE_SESSION);
     return res[STORAGE_KEYS.ACTIVE_SESSION] || null;
@@ -90,6 +108,7 @@ export function createStorage(area) {
     listLectures,
     getLecture,
     upsertLecture,
+    updateLectures,
     deleteLectureMeta,
     getActiveSession,
     setActiveSession,
@@ -108,6 +127,7 @@ export const {
   listLectures,
   getLecture,
   upsertLecture,
+  updateLectures,
   deleteLectureMeta,
   getActiveSession,
   setActiveSession,

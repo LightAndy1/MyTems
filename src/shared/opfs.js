@@ -1,3 +1,5 @@
+import { toSafeFilename } from './sanitize.js';
+
 async function resolveSubdir(root, segments, create) {
   let dir = root;
   for (const seg of segments) {
@@ -106,5 +108,45 @@ export async function getLectureMediaBytes(id) {
   } catch (err) {
     if (err?.name === 'NotFoundError') return 0;
     throw err;
+  }
+}
+
+export async function getLessonDir(lessonId, create = false) {
+  const root = await navigator.storage.getDirectory();
+  return resolveSubdir(root, ['lessons', toSafeFilename(lessonId)], create);
+}
+
+export async function readLessonJson(lessonId, relPath) {
+  try {
+    const parts = relPath.split('/').filter(Boolean);
+    const fileName = parts.pop();
+    const baseDir = await getLessonDir(lessonId, false);
+    const dir = parts.length ? await resolveSubdir(baseDir, parts, false) : baseDir;
+    const fh = await dir.getFileHandle(fileName);
+    return JSON.parse(await (await fh.getFile()).text());
+  } catch (err) {
+    if (err?.name === 'NotFoundError') return null;
+    throw err;
+  }
+}
+
+export async function writeLessonJson(lessonId, relPath, obj) {
+  const parts = relPath.split('/').filter(Boolean);
+  const fileName = parts.pop();
+  const baseDir = await getLessonDir(lessonId, true);
+  const dir = parts.length ? await resolveSubdir(baseDir, parts, true) : baseDir;
+  const fh = await dir.getFileHandle(fileName, { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(JSON.stringify(obj, null, 2));
+  await writable.close();
+}
+
+export async function deleteLessonDir(lessonId) {
+  try {
+    const root = await navigator.storage.getDirectory();
+    const lessonsDir = await root.getDirectoryHandle('lessons');
+    await lessonsDir.removeEntry(toSafeFilename(lessonId), { recursive: true });
+  } catch (err) {
+    if (err?.name !== 'NotFoundError') throw err;
   }
 }

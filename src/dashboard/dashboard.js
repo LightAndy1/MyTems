@@ -45,6 +45,8 @@ import {
 const el = (id) => document.getElementById(id);
 
 let libraryTree = { subjects: [], lessonsById: new Map(), partMetaById: new Map() };
+let activeStoreView = 'catalog';
+let catalogStatusFilter = 'all';
 let activeViewMode = 'lecture';
 let activeLessonId = null;
 let selectedId = null;
@@ -60,6 +62,42 @@ let checkedIds = new Set();
 const collapsedSubjects = new Set();
 const collapsedLessons = new Set();
 let groupModalTargetIds = [];
+
+const STORE_VIEW_TITLES = {
+  catalog: 'MyTems Clearnet Catalog',
+  workbench: 'Study Workbench',
+  radar: 'Exam & Deadline Radar',
+};
+
+function switchStoreView(view) {
+  activeStoreView = view;
+  el('catalogView').hidden = view !== 'catalog';
+  el('workbenchView').hidden = view !== 'workbench';
+  el('radarView').hidden = view !== 'radar';
+  el('toggleRailBtn').hidden = view !== 'workbench';
+  el('storeViewTitle').textContent = STORE_VIEW_TITLES[view] || 'MyTems';
+  for (const btn of document.querySelectorAll('.dock-btn[data-store-view]')) {
+    btn.classList.toggle('active', btn.dataset.storeView === view);
+  }
+  if (view === 'radar') {
+    renderGlobalRadar().catch((err) => setBanner(err?.message || String(err), true));
+  }
+}
+
+function applyTheme(theme) {
+  if (theme === 'dark' || theme === 'light') {
+    document.documentElement.setAttribute('data-theme', theme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const btn = el('themeToggleBtn');
+  if (btn) {
+    const isDark =
+      theme === 'dark' ||
+      (!theme && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+    btn.textContent = isDark ? 'Clearnet Light' : 'Darknet Mode';
+  }
+}
 
 function revokeSlideUrls() {
   for (const u of slideUrls) URL.revokeObjectURL(u);
@@ -378,6 +416,8 @@ async function renderLectureList() {
     subjSec.append(subjHeader, lessonsWrap);
     listEl.appendChild(subjSec);
   }
+  renderCatalogGrid();
+  refreshVaultSummary(lectures);
 }
 
 function renderTranscript(query = '') {
@@ -437,8 +477,205 @@ async function renderSlidesForParts(parts, seq = selectSeq) {
   }
 
   el('slidesStrip').hidden = totalCount === 0;
+  el('slidesEmptyHint').hidden = totalCount > 0;
   el('slidesCount').textContent = String(totalCount);
   highlightActiveSlide(el('videoPlayer').currentTime || 0);
+}
+
+function getDropStatus(parts) {
+  if (parts.some((p) => p.status === 'recording')) return 'recording';
+  if (parts.some((p) => p.status === 'ready')) return 'ready';
+  if (parts.some((p) => p.status === 'transcribed')) return 'transcribed';
+  return 'recorded';
+}
+
+function getDropBadge(status) {
+  if (status === 'ready') return { cls: 'badge', label: 'Notes Ready' };
+  if (status === 'transcribed') return { cls: 'badge badge-cyan', label: 'Transcribed · $0 LLM' };
+  if (status === 'recording') return { cls: 'badge badge-danger', label: 'Recording Live' };
+  return { cls: 'badge badge-neutral', label: 'Raw OPFS Drop · $0' };
+}
+
+async function refreshVaultSummary(lectures) {
+  const pill = el('vaultSummaryPill');
+  if (!pill) return;
+  let totalBytes = 0;
+  try {
+    const sizes = await Promise.all(lectures.map((l) => getLectureMediaBytes(l.id).catch(() => 0)));
+    totalBytes = sizes.reduce((a, b) => a + b, 0);
+  } catch {
+    totalBytes = 0;
+  }
+  const mb = (totalBytes / 1048576).toFixed(1);
+  pill.innerHTML = '';
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  pill.append(dot, document.createTextNode(`${lectures.length} drop${lectures.length === 1 ? '' : 's'} · ${mb} MB OPFS · 0 B Server Upload`));
+}
+
+function renderCatalogGrid() {
+  const grid = el('catalogGrid');
+  if (!grid) return;
+  const q = (el('catalogSearch')?.value || '').trim().toLowerCase();
+  grid.innerHTML = '';
+  let rendered = 0;
+
+  for (const subj of libraryTree.subjects) {
+    for (const lesson of subj.lessons) {
+      const status = getDropStatus(lesson.parts);
+      if (catalogStatusFilter !== 'all' && status !== catalogStatusFilter) continue;
+      const searchBlob = `${subj.name} ${lesson.title} ${lesson.parts.map((p) => p.title).join(' ')}`.toLowerCase();
+      if (q && !searchBlob.includes(q)) continue;
+
+      const card = document.createElement('article');
+      card.className = 'drop-card';
+
+      const top = document.createElement('div');
+      const topRow = document.createElement('div');
+      topRow.className = 'drop-top';
+
+      const subjPill = document.createElement('span');
+      subjPill.className = 'drop-subject';
+      subjPill.textContent = subj.name;
+
+      const badgeMeta = getDropBadge(status);
+      const badge = document.createElement('span');
+      badge.className = badgeMeta.cls;
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      badge.append(dot, document.createTextNode(badgeMeta.label));
+      topRow.append(subjPill, badge);
+
+      const h2 = document.createElement('h2');
+      h2.textContent = lesson.title;
+
+      const specs = document.createElement('p');
+      specs.className = 'drop-specs mono';
+      const partText = lesson.isGroup ? `${lesson.parts.length} parts` : '1 part';
+      specs.textContent = `${lesson.date} · ${formatTimestamp(lesson.totalDurationSec)} · ${partText}`;
+
+      top.append(topRow, h2, specs);
+
+      const foot = document.createElement('div');
+      foot.className = 'drop-foot';
+
+      const openBtn = document.createElement('button');
+      openBtn.type = 'button';
+      openBtn.className = 'btn btn-sm btn-primary';
+      openBtn.textContent = status === 'ready' ? 'Open Workbench' : 'Inspect Drop';
+      openBtn.addEventListener('click', async () => {
+        switchStoreView('workbench');
+        if (lesson.isGroup) await selectLesson(lesson.lessonId);
+        else await selectLecture(lesson.parts[0].id);
+      });
+
+      const quickBtn = document.createElement('button');
+      quickBtn.type = 'button';
+      quickBtn.className = 'btn btn-sm';
+      if (status === 'ready') {
+        quickBtn.textContent = 'Export .zip';
+        quickBtn.addEventListener('click', async () => {
+          if (lesson.isGroup) await selectLesson(lesson.lessonId);
+          else await selectLecture(lesson.parts[0].id);
+          await exportNotionZipForCurrent();
+        });
+      } else {
+        quickBtn.textContent = status === 'transcribed' ? 'Generate Notes' : 'Transcribe ($0)';
+        quickBtn.addEventListener('click', async () => {
+          switchStoreView('workbench');
+          if (lesson.isGroup) await selectLesson(lesson.lessonId);
+          else await selectLecture(lesson.parts[0].id);
+          el(status === 'transcribed' ? 'summarizeBtn' : 'transcribeOnlyBtn').click();
+        });
+      }
+
+      foot.append(openBtn, quickBtn);
+      card.append(top, foot);
+      grid.appendChild(card);
+      rendered += 1;
+    }
+  }
+
+  if (rendered === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'card catalog-empty';
+    const h2 = document.createElement('h2');
+    h2.textContent = 'No drops match this filter';
+    const p = document.createElement('p');
+    p.style.color = 'var(--muted)';
+    p.textContent = 'Click the MyTems capsule icon on any Microsoft Teams tab to record at $0, or switch filters above.';
+    empty.append(h2, p);
+    grid.appendChild(empty);
+  }
+}
+
+async function renderGlobalRadar() {
+  const listEl = el('globalRadarList');
+  const countEl = el('globalRadarCount');
+  if (!listEl || !countEl) return;
+  listEl.innerHTML = '';
+  const entries = [];
+
+  for (const subj of libraryTree.subjects) {
+    for (const lesson of subj.lessons) {
+      const notes = lesson.isGroup
+        ? await readLessonJson(lesson.lessonId, 'notes.json').catch(() => null)
+        : await readLectureJson(lesson.parts[0].id, 'notes.json').catch(() => null);
+      if (!notes?.examRadar?.length) continue;
+      for (const item of notes.examRadar) {
+        entries.push({ subj: subj.name, lesson, item });
+      }
+    }
+  }
+
+  countEl.textContent = `${entries.length} item${entries.length === 1 ? '' : 's'}`;
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'global-radar-row';
+    empty.textContent = 'No Exam & Deadline Radar items yet. Run Generate Notes on a lecture to extract exam traps and deadlines.';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  for (const { subj, lesson, item } of entries) {
+    const row = document.createElement('div');
+    row.className = 'global-radar-row';
+
+    const info = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = `${subj} — ${lesson.title}`;
+    const detail = document.createElement('div');
+    const due = item.dueDate ? ` (Due: ${item.dueDate})` : '';
+    detail.textContent = `[${String(item.type).toUpperCase()}] ${item.text}${due}`;
+    info.append(title, detail);
+
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.alignItems = 'center';
+    right.style.gap = '8px';
+
+    if (typeof item.confidence === 'number' && Number.isFinite(item.confidence)) {
+      const conf = document.createElement('span');
+      conf.className = 'radar-confidence-badge';
+      conf.textContent = `${Math.round(item.confidence * 100)}%`;
+      right.appendChild(conf);
+    }
+
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'ts-link';
+    jump.textContent = formatTimestamp(item.timestampSec || 0);
+    jump.addEventListener('click', async () => {
+      switchStoreView('workbench');
+      if (lesson.isGroup) await selectLesson(lesson.lessonId, item.partId || lesson.parts[0].id);
+      else await selectLecture(lesson.parts[0].id);
+      await seekTo(item.timestampSec || 0, item.partId || null);
+    });
+    right.appendChild(jump);
+
+    row.append(info, right);
+    listEl.appendChild(row);
+  }
 }
 
 function renderPartSwitcher(lesson) {
@@ -1161,6 +1398,15 @@ function syncModeUI(mode) {
   }
 }
 
+function syncRoutingCards(route) {
+  const select = form.elements.providerRouting;
+  if (select && route) select.value = route;
+  const current = select?.value || 'auto';
+  for (const card of form.querySelectorAll('.route-card')) {
+    card.classList.toggle('active', card.dataset.route === current);
+  }
+}
+
 async function openSettingsModal() {
   const s = await getSettings();
   for (const name of SETTING_FIELDS) {
@@ -1169,13 +1415,19 @@ async function openSettingsModal() {
     else field.value = s[name] || '';
   }
   syncModeUI(s.providerMode);
+  syncRoutingCards(s.providerRouting || 'auto');
   if (!modal.open) modal.showModal();
+}
+
+for (const card of form.querySelectorAll('.route-card')) {
+  card.addEventListener('click', () => syncRoutingCards(card.dataset.route));
 }
 
 for (const btn of form.querySelectorAll('.seg-btn')) {
   btn.addEventListener('click', () => syncModeUI(btn.dataset.mode));
 }
 el('openSettingsBtn').addEventListener('click', openSettingsModal);
+el('openSettingsTopBtn')?.addEventListener('click', openSettingsModal);
 el('closeSettingsBtn').addEventListener('click', () => modal.close());
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1203,6 +1455,45 @@ form.addEventListener('submit', async (e) => {
   modal.close();
 });
 
+for (const btn of document.querySelectorAll('.dock-btn[data-store-view]')) {
+  btn.addEventListener('click', () => switchStoreView(btn.dataset.storeView));
+}
+
+for (const pill of document.querySelectorAll('.filter-pill[data-catalog-filter]')) {
+  pill.addEventListener('click', () => {
+    catalogStatusFilter = pill.dataset.catalogFilter;
+    for (const p of document.querySelectorAll('.filter-pill[data-catalog-filter]')) {
+      p.classList.toggle('active', p === pill);
+    }
+    renderCatalogGrid();
+  });
+}
+
+el('catalogSearch')?.addEventListener('input', () => renderCatalogGrid());
+
+el('toggleRailBtn')?.addEventListener('click', (e) => {
+  const hidden = el('workbenchView').classList.toggle('rail-hidden');
+  e.currentTarget.textContent = hidden ? 'Show Library' : 'Hide Library';
+});
+
+el('themeToggleBtn')?.addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+  const next = current ? (current === 'dark' ? 'light' : 'dark') : (systemDark ? 'light' : 'dark');
+  try {
+    localStorage.setItem('mytems_theme', next);
+  } catch {
+    // ignore storage restriction
+  }
+  applyTheme(next);
+});
+
+try {
+  applyTheme(localStorage.getItem('mytems_theme'));
+} catch {
+  applyTheme(null);
+}
+
 window.addEventListener('hashchange', () => {
   if (location.hash === '#settings') openSettingsModal();
 });
@@ -1219,6 +1510,7 @@ async function init() {
     if (firstLesson.isGroup) await selectLesson(firstLesson.lessonId);
     else await selectLecture(firstLesson.parts[0].id);
   }
+  switchStoreView('catalog');
   if (location.hash === '#settings') await openSettingsModal();
 }
 

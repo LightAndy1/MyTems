@@ -1,20 +1,20 @@
 ---
-version: 1
+version: 2
 slug: "src-dashboard-dashboard-html"
 primary_target: "src/dashboard/dashboard.html"
 related_targets: ["src/popup/popup.html"]
 ---
 
-# Surface Brief: MyTems Study Dashboard & Recorder Popup
+# Surface Brief: MyTems Clearnet Storefront & Recorder Popup
 
 Mode: operate
 Targets: `src/dashboard/dashboard.html`, `src/popup/popup.html`
 
 ## Direction contract
 
-- **THESIS:** A quiet broadcast cue-sheet and study workbench that separates zero-cost capture from progressive two-step AI processing (**Transcribe Only** vs **Generate Notes**), refusing cluttered floating action bars and hidden storage traps.
-- **OWN-WORLD:** Adaptive daylight study paper (`#F6F7FA` / `#FFFFFF`) and low-glare evening slate (`#0D1017` / `#151923`), cool tinted lecture rail (`#EDF0F5` / `#11151E`), primary cobalt action ink (`#2563EB` / `#60A5FA`), single amber semantic lane exclusively for the **Exam & Deadline Radar**, consistent 1px crisp borders, inline SVG icons (`1.75px` stroke), and tabular `MM:SS` cue chips.
-- **STORY:** A student opens the dashboard right after class, sees their lecture named from the Teams tab, immediately understands whether to **Transcribe Only ($0 LLM)** or **Generate Notes**, clicks any cue chip or slide thumbnail to jump to that second in the video, and exports final AI notes to Notion or reclaims disk space via a tidy Storage menu.
-- **FIRST VIEWPORT:** Left `268px` tinted lecture rail (search + clean status-badged list + Settings modal trigger) paired with a main header (`Title`, compact `date · duration · size · cost` subline, progressive `Transcribe` / `Generate Notes` controls, `Export` actions, and a `⋯` Storage menu), subtle inline Course hint, and a balanced two-column workspace: Video + Slide actions/strip on the left, **Exam & Deadline Radar** + tabbed **Notes / Transcript** on the right.
-- **FORM:** Candidate 4 (Timecode Study Workbench, ranked #4 -> assigned, raised with `ikeda-datamatics` tabular numeric discipline, `vernacular-ephemera-boarding-pass-and-gate-board` persistent amber alert Radar, and `rw-centre-rail-reference-setting` `MM:SS` cue-margin clarity), `seed:2948fb9956e9f807`.
+- **THESIS:** An airy Clearnet Storefront Catalog and Study Workbench inspired by MyTems/HTSDOF startup clarity that separates zero-cost OPFS capture from progressive two-step AI processing (**Transcribe Only ($0 LLM)** vs **Generate Notes**) and lets students flip effortlessly between Catalog Drops, Study Workbench, and Global Exam Radar.
+- **OWN-WORLD:** Airy daylight paper (`#F5F7FB` / `#FFFFFF`) with Darknet toggle (`#090D15` / `#131B2B`), MyTems capsule-play cobalt (`#0057FF`), HTSDOF mint OPFS badges (`#00B873` / `#047857`), cyan STT badges (`#0E7490`), single amber **Exam & Deadline Radar** lane (`#FFFBEB` / `#F59E0B`), 1px structural borders, and tabular `MM:SS` cue buttons.
+- **STORY:** A student opens the Storefront Catalog, scans their local OPFS drops by status (`Notes Ready`, `STT Only ($0)`, `Raw Capture`), opens any drop in the Study Workbench with collapsible Subject/Lesson rail, scrubs video via slides or `MM:SS` cues, checks deadlines in Global Radar, and configures routing via the Command-Card Settings modal.
+- **FIRST VIEWPORT:** `76px` left icon dock (`Catalog`, `Study`, `Radar`, `Settings`) + header bar (`MyTems Clearnet Catalog`, OPFS vault pill, Darknet toggle, `Dispatch Settings` CTA) + status filter pills, search bar, and 3-column airy drop card grid.
+- **FORM:** Storefront Catalog Deck (Mockup 3 approved by user from three interactive concepts; grounded on `seed:162f50e01bbd2368`), zero violet/lavender, WCAG AA >= 4.5:1 verified.
 - **FINISH:** unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance

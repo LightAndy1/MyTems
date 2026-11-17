@@ -3,168 +3,280 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MyTems — Saved Lectures</title>
+    <title>MyTems — Clearnet Study Storefront</title>
+    <link rel="icon" type="image/png" href="../../icons/icon-48.png" />
     <link rel="stylesheet" href="./dashboard.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="rail">
-        <div class="rail-head">
-          <div class="brand-lockup">
-            <svg class="brand-mark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="14" rx="3" />
-              <path d="M9 10l5 3-5 3v-6z" fill="currentColor" stroke="none" />
-              <path d="M7 21h10" stroke-linecap="round" />
+    <div class="store-layout">
+      <aside class="dock" aria-label="Workspace navigation">
+        <div class="dock-top">
+          <a class="dock-brand" href="#catalog" title="MyTems — Totally Legal Lecture Stash">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+              <rect width="36" height="36" rx="10" fill="#0057FF" />
+              <rect x="6.5" y="10.5" width="23" height="15" rx="7.5" fill="#FFFFFF" />
+              <path d="M18 10.5v15" stroke="#0057FF" stroke-width="2" />
+              <path d="M11.2 14.6l4.4 3.4-4.4 3.4v-6.8z" fill="#0057FF" />
+              <circle cx="23.7" cy="18" r="2.7" fill="#00B873" />
             </svg>
-            <h1>MyTems</h1>
-          </div>
-          <button id="openSettingsBtn" class="btn btn-icon" title="Settings" aria-label="Open Settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </a>
+
+          <button id="navCatalogBtn" class="dock-btn active" type="button" data-store-view="catalog">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" />
             </svg>
-            <span>Settings</span>
+            <span>Catalog</span>
+          </button>
+
+          <button id="navStudyBtn" class="dock-btn" type="button" data-store-view="workbench">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="6 3 20 12 6 21 6 3" />
+            </svg>
+            <span>Study</span>
+          </button>
+
+          <button id="navRadarBtn" class="dock-btn" type="button" data-store-view="radar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+              <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+            </svg>
+            <span>Radar</span>
           </button>
         </div>
 
-        <div class="rail-toolbar">
-          <input id="lectureFilter" class="search-input" type="search" placeholder="Search lectures..." aria-label="Search lectures" />
-          <button id="toggleSelectModeBtn" class="btn btn-compact" type="button" aria-pressed="false">Select</button>
-        </div>
-        <ul id="lectureList" class="lecture-list"></ul>
-        <div id="batchBar" class="batch-bar" hidden>
-          <div class="batch-bar-head">
-            <span id="batchCount" class="batch-count">0 selected</span>
-            <button id="batchClearBtn" class="btn btn-compact" type="button">Clear</button>
-          </div>
-          <div class="batch-actions">
-            <button id="batchDownloadBtn" class="btn btn-compact" type="button">Download</button>
-            <button id="batchZipBtn" class="btn btn-compact" type="button">Export .zips</button>
-            <button id="batchGroupBtn" class="btn btn-compact" type="button">Group / Move</button>
-            <button id="batchUngroupBtn" class="btn btn-compact" type="button">Ungroup</button>
-            <button id="batchFreeBtn" class="btn btn-compact" type="button">Free Space</button>
-            <button id="batchDeleteBtn" class="btn btn-compact btn-danger-outline" type="button">Delete</button>
-          </div>
-        </div>
+        <button id="openSettingsBtn" class="dock-btn" type="button" title="Settings" aria-label="Open Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          <span>Settings</span>
+        </button>
       </aside>
 
-      <main class="main">
-        <div id="emptyState" class="empty-state">
-          <h2>No lecture selected</h2>
-          <p>Record a Teams tab from the toolbar icon ($0 cost), then choose a lecture on the left to transcribe or summarize.</p>
-          <ol class="guide-steps">
-            <li><strong>Record locally:</strong> Capture Teams video and segmented Opus audio directly in Helium.</li>
-            <li><strong>Transcribe Only or Generate Notes:</strong> Run speech-to-text alone ($0 LLM) or full slide-aware notes + Exam Radar.</li>
-            <li><strong>Jump &amp; Export:</strong> Click any <code>MM:SS</code> cue or slide to seek video, then export clean Markdown to Notion.</li>
-          </ol>
-        </div>
+      <main id="top" class="content">
+        <header class="header-bar">
+          <div class="brand-title">
+            <h1 id="storeViewTitle">MyTems Clearnet Catalog</h1>
+            <span id="vaultSummaryPill" class="badge mono"><span class="dot"></span>OPFS Vault · $0 Server Trail</span>
+          </div>
 
-        <section id="lectureView" class="lecture-view" hidden>
-          <header class="topbar">
-            <div class="title-block">
-              <h2 id="lecTitle"></h2>
-              <p id="lecMeta" class="meta-line"></p>
-              <div class="hint-row">
-                <label class="hint-label" for="lecSubjectInput">Subject</label>
-                <input id="lecSubjectInput" class="hint-input hint-input-short" type="text" placeholder="Subject / course group" />
-                <label class="hint-label" for="lecCourseHint">Hint</label>
-                <input id="lecCourseHint" class="hint-input" type="text" placeholder="Optional topic (improves RO + EN technical terms)" />
-              </div>
+          <div class="header-controls">
+            <button id="toggleRailBtn" class="btn btn-sm" type="button" hidden>Hide Library</button>
+            <button id="themeToggleBtn" class="btn btn-sm" type="button">Darknet Mode</button>
+            <button id="openSettingsTopBtn" class="btn btn-sm btn-primary" type="button">Dispatch Settings</button>
+          </div>
+        </header>
+
+        <p id="statusBanner" class="status-banner" role="status" hidden></p>
+
+        <!-- VIEW 1: STOREFRONT CATALOG -->
+        <section id="catalogView" aria-label="Lecture Catalog">
+          <div class="catalog-tools">
+            <div class="filter-pills" role="group" aria-label="Filter lectures by status">
+              <button class="filter-pill active" type="button" data-catalog-filter="all">All Drops</button>
+              <button class="filter-pill" type="button" data-catalog-filter="ready">Notes Ready</button>
+              <button class="filter-pill" type="button" data-catalog-filter="transcribed">STT Only ($0 LLM)</button>
+              <button class="filter-pill" type="button" data-catalog-filter="recorded">Raw Capture</button>
+            </div>
+            <div class="search-wrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input id="catalogSearch" class="input" type="search" placeholder="Search lecture catalog..." aria-label="Search lecture catalog" />
+            </div>
+          </div>
+
+          <div id="catalogGrid" class="catalog-grid"></div>
+        </section>
+
+        <!-- VIEW 2: STUDY WORKBENCH -->
+        <section id="workbenchView" class="workbench-shell" hidden>
+          <aside class="rail" aria-label="Lecture library">
+            <div class="rail-toolbar">
+              <input id="lectureFilter" class="input" type="search" placeholder="Search drops..." aria-label="Search lectures" />
+              <button id="toggleSelectModeBtn" class="btn btn-sm" type="button" aria-pressed="false">Select</button>
             </div>
 
-            <div class="actions">
-              <button id="transcribeOnlyBtn" class="btn" title="Run speech-to-text only ($0 LLM)">Transcribe Only</button>
-              <button id="summarizeBtn" class="btn btn-primary">Generate Notes</button>
-              <button id="copyNotionBtn" class="btn" disabled>Copy Notion MD</button>
-              <button id="zipNotionBtn" class="btn" disabled>Export .zip</button>
-              <button id="quickDownloadBtn" class="btn" type="button">Download .webm</button>
+            <ul id="lectureList" class="lecture-list"></ul>
 
-              <details id="storageMenu" class="menu-wrap">
-                <summary class="btn btn-icon-only" title="Storage & file actions" aria-label="Storage and file actions">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                    <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
-                  </svg>
-                </summary>
-                <div class="menu-panel" role="menu">
-                  <button id="downloadVideoBtn" class="menu-item" type="button" role="menuitem">Download Video (.webm)</button>
-                  <button id="renameLessonBtn" class="menu-item" type="button" role="menuitem">Group / Rename Lesson...</button>
-                  <button id="ungroupLectureBtn" class="menu-item" type="button" role="menuitem">Ungroup (Make Standalone)</button>
-                  <button id="freeMediaBtn" class="menu-item" type="button" role="menuitem">Free Media Space (keep notes)</button>
-                  <button id="deleteLectureBtn" class="menu-item menu-danger" type="button" role="menuitem">Delete Lecture</button>
-                </div>
-              </details>
+            <div id="batchBar" class="batch-bar" hidden>
+              <div class="batch-bar-head">
+                <span id="batchCount" class="batch-count">0 selected</span>
+                <button id="batchClearBtn" class="btn btn-sm" type="button">Clear</button>
+              </div>
+              <div class="batch-actions">
+                <button id="batchDownloadBtn" class="btn btn-sm" type="button">Download</button>
+                <button id="batchZipBtn" class="btn btn-sm" type="button">Export .zips</button>
+                <button id="batchGroupBtn" class="btn btn-sm" type="button">Group / Move</button>
+                <button id="batchUngroupBtn" class="btn btn-sm" type="button">Ungroup</button>
+                <button id="batchFreeBtn" class="btn btn-sm" type="button">Free Space</button>
+                <button id="batchDeleteBtn" class="btn btn-sm btn-danger-outline" type="button">Delete</button>
+              </div>
             </div>
-          </header>
+          </aside>
 
-          <div id="partSwitcher" class="part-switcher" hidden></div>
+          <div class="workbench-main">
+            <div id="emptyState" class="empty-state card">
+              <h2>No drop selected</h2>
+              <p>Record a Teams tab from the MyTems toolbar icon ($0 cost), then pick a lecture from Catalog or the left list to transcribe or synthesize notes.</p>
+              <ol class="guide-steps">
+                <li><strong>Capture locally:</strong> Teams tab video and segmented Opus audio save straight into OPFS — zero BKA/server footprint.</li>
+                <li><strong>Transcribe Only or Generate Notes:</strong> Run speech-to-text at $0 LLM cost, or build slide-synced notes + Exam Radar.</li>
+                <li><strong>Jump &amp; Dispatch:</strong> Click any <code>MM:SS</code> cue or slide thumbnail to seek video, then export clean Notion Markdown.</li>
+              </ol>
+            </div>
 
-          <p id="statusBanner" class="status-banner" role="status" hidden></p>
-
-          <div class="stage-grid">
-            <section class="media-col">
-              <div class="player-shell">
-                <video id="videoPlayer" controls></video>
-                <div id="mediaFreedNote" class="media-freed" hidden>
-                  <strong>Raw video and audio deleted to save space.</strong>
-                  <span>Notes, transcript, and extracted slides stay saved locally.</span>
+            <section id="lectureView" class="lecture-view" hidden>
+              <header class="topbar card">
+                <div class="title-block">
+                  <h2 id="lecTitle"></h2>
+                  <p id="lecMeta" class="meta-line mono"></p>
+                  <div class="hint-row">
+                    <label class="inline-field">
+                      <span>Subject</span>
+                      <input id="lecSubjectInput" type="text" placeholder="Subject / course group" />
+                    </label>
+                    <label class="inline-field wide">
+                      <span>Hint</span>
+                      <input id="lecCourseHint" type="text" placeholder="Optional topic (improves RO + EN technical terms)" />
+                    </label>
+                  </div>
                 </div>
+
+                <div class="actions">
+                  <button id="transcribeOnlyBtn" class="btn btn-sm" title="Run speech-to-text only ($0 LLM)">Transcribe Only ($0 LLM)</button>
+                  <button id="summarizeBtn" class="btn btn-sm btn-primary">Generate Notes</button>
+                  <button id="copyNotionBtn" class="btn btn-sm" disabled>Copy Notion MD</button>
+                  <button id="zipNotionBtn" class="btn btn-sm" disabled>Export .zip</button>
+                  <button id="quickDownloadBtn" class="btn btn-sm" type="button">Download .webm</button>
+
+                  <details id="storageMenu" class="menu-wrap">
+                    <summary class="btn btn-sm btn-icon" title="Storage &amp; file actions" aria-label="Storage and file actions">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+                      </svg>
+                    </summary>
+                    <div class="menu-panel" role="menu">
+                      <button id="downloadVideoBtn" class="menu-item" type="button" role="menuitem">Download Video (.webm)</button>
+                      <button id="renameLessonBtn" class="menu-item" type="button" role="menuitem">Group / Rename Lesson...</button>
+                      <button id="ungroupLectureBtn" class="menu-item" type="button" role="menuitem">Ungroup (Make Standalone)</button>
+                      <button id="freeMediaBtn" class="menu-item" type="button" role="menuitem">Free Media Space (keep notes)</button>
+                      <button id="deleteLectureBtn" class="menu-item menu-danger" type="button" role="menuitem">Delete Lecture</button>
+                    </div>
+                  </details>
+                </div>
+              </header>
+
+              <div id="partSwitcher" class="part-switcher" hidden></div>
+
+              <!-- Deck Top: Video + Horizontal Slide Strip -->
+              <section class="deck-top card" aria-label="Media player and slides">
+                <div class="media-col">
+                  <div class="player-shell">
+                    <video id="videoPlayer" controls></video>
+                    <div id="mediaFreedNote" class="media-freed" hidden>
+                      <strong>Raw video and audio cleared from OPFS to save space.</strong>
+                      <span>Notes, transcript, and extracted slides remain saved locally.</span>
+                    </div>
+                  </div>
+                  <div class="media-tools">
+                    <button id="snapSlideBtn" class="btn btn-sm" type="button" hidden>Snap Slide at Current Time</button>
+                    <button id="attachImagesBtn" class="btn btn-sm" type="button">Attach Whiteboard / Slide</button>
+                    <input id="attachImagesInput" type="file" accept="image/*" multiple hidden />
+                  </div>
+                </div>
+
+                <div class="slides-col">
+                  <section id="slidesStrip" class="slides-strip" hidden>
+                    <div class="section-head">
+                      <h3>Slides &amp; Attachments</h3>
+                      <span id="slidesCount" class="count-label mono"></span>
+                    </div>
+                    <div id="slidesGrid" class="slides-grid"></div>
+                  </section>
+                  <div id="slidesEmptyHint" class="slides-empty">
+                    Snap slides from the video or attach MS Whiteboard frames to sync visual cues with timestamps.
+                  </div>
+                </div>
+              </section>
+
+              <!-- Workbench Columns: Study Notes / Transcript + Exam Radar -->
+              <div class="workbench-cols">
+                <section class="desk-main">
+                  <section id="unprocessedCard" class="prompt-card card" hidden>
+                    <h3>Ready to process</h3>
+                    <p>Run <strong>Transcribe Only ($0 LLM)</strong> for searchable RO/EN text without LLM spend, or <strong>Generate Notes</strong> to extract slides, chapters, formulas, and Exam Radar.</p>
+                  </section>
+
+                  <section id="studyCard" class="study-card card" hidden>
+                    <div class="study-tabs" role="tablist">
+                      <div class="tab-group">
+                        <button id="tabNotesBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">Study Notes</button>
+                        <button id="tabTranscriptBtn" class="tab-btn" type="button" role="tab" aria-selected="false">Transcript</button>
+                      </div>
+                      <span id="costReceipt" class="cost-pill mono" hidden></span>
+                    </div>
+
+                    <div id="notesTabPanel" class="tab-panel">
+                      <p id="notesSummary" class="summary-copy"></p>
+                      <div id="chaptersContainer" class="chapters"></div>
+                      <div id="definitionsContainer" class="definitions"></div>
+                    </div>
+
+                    <div id="transcriptTabPanel" class="tab-panel" hidden>
+                      <input id="transcriptSearch" class="input transcript-search" type="search" placeholder="Filter bilingual RO/EN transcript..." aria-label="Filter transcript" />
+                      <div id="transcriptLines" class="transcript-lines"></div>
+                    </div>
+                  </section>
+                </section>
+
+                <aside class="desk-side">
+                  <section id="radarCard" class="radar-card" hidden>
+                    <div class="radar-head">
+                      <h3>Exam &amp; Deadline Radar</h3>
+                      <span class="badge mono">Timecode Synced</span>
+                    </div>
+                    <ul id="radarList" class="radar-list"></ul>
+                  </section>
+                </aside>
               </div>
-
-              <div class="media-tools">
-                <button id="snapSlideBtn" class="btn" type="button" hidden>Snap Slide at Current Time</button>
-                <button id="attachImagesBtn" class="btn" type="button">Attach Whiteboard / Slide</button>
-                <input id="attachImagesInput" type="file" accept="image/*" multiple hidden />
-              </div>
-
-              <section id="slidesStrip" class="slides-strip" hidden>
-                <div class="section-head">
-                  <h3>Slides &amp; Attachments</h3>
-                  <span id="slidesCount" class="count-label"></span>
-                </div>
-                <div id="slidesGrid" class="slides-grid"></div>
-              </section>
             </section>
+          </div>
+        </section>
 
-            <section class="desk-col">
-              <section id="radarCard" class="radar-card" hidden>
-                <h3>Exam &amp; Deadline Radar</h3>
-                <ul id="radarList" class="radar-list"></ul>
-              </section>
-
-              <section id="unprocessedCard" class="prompt-card" hidden>
-                <h3>Ready to process</h3>
-                <p>Run <strong>Transcribe Only</strong> for searchable RO/EN text without LLM spend, or <strong>Generate Notes</strong> to extract slides, chapters, formulas, and Exam Radar.</p>
-              </section>
-
-              <section id="studyCard" class="study-card" hidden>
-                <div class="study-tabs" role="tablist">
-                  <button id="tabNotesBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">Study Notes</button>
-                  <button id="tabTranscriptBtn" class="tab-btn" type="button" role="tab" aria-selected="false">Transcript</button>
-                  <span id="costReceipt" class="cost-pill" hidden></span>
-                </div>
-
-                <div id="notesTabPanel" class="tab-panel">
-                  <p id="notesSummary" class="summary-copy"></p>
-                  <div id="chaptersContainer" class="chapters"></div>
-                  <div id="definitionsContainer" class="definitions"></div>
-                </div>
-
-                <div id="transcriptTabPanel" class="tab-panel" hidden>
-                  <input id="transcriptSearch" class="transcript-search" type="search" placeholder="Filter transcript..." aria-label="Filter transcript" />
-                  <div id="transcriptLines" class="transcript-lines"></div>
-                </div>
-              </section>
-            </section>
+        <!-- VIEW 3: GLOBAL EXAM RADAR -->
+        <section id="radarView" hidden aria-label="Global Exam and Deadline Radar">
+          <div class="radar-card">
+            <div class="radar-head">
+              <h2>Global Exam &amp; Deadline Radar</h2>
+              <span id="globalRadarCount" class="badge mono">0 items</span>
+            </div>
+            <div id="globalRadarList" class="global-radar-list"></div>
           </div>
         </section>
       </main>
     </div>
 
-    <dialog id="settingsModal" class="modal">
-      <form id="settingsForm" method="dialog" class="modal-card">
+    <!-- Command-Card Settings Modal -->
+    <dialog id="settingsModal" class="modal" aria-labelledby="settingsModalTitle">
+      <form id="settingsForm" method="dialog" class="modal-card cmd-modal">
         <header class="modal-head">
-          <h2>Settings</h2>
-          <button type="button" id="closeSettingsBtn" class="btn btn-icon-only" aria-label="Close Settings">
+          <div class="modal-title-wrap">
+            <svg width="26" height="26" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+              <rect width="36" height="36" rx="10" fill="#0057FF" />
+              <rect x="6.5" y="10.5" width="23" height="15" rx="7.5" fill="#FFFFFF" />
+              <path d="M18 10.5v15" stroke="#0057FF" stroke-width="2" />
+              <path d="M11.2 14.6l4.4 3.4-4.4 3.4v-6.8z" fill="#0057FF" />
+              <circle cx="23.7" cy="18" r="2.7" fill="#00B873" />
+            </svg>
+            <h2 id="settingsModalTitle">MyTems Express Settings</h2>
+          </div>
+          <button type="button" id="closeSettingsBtn" class="btn btn-sm btn-icon" aria-label="Close Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
               <path d="M18 6 6 18" /><path d="m6 6 12 12" />
             </svg>
@@ -172,39 +284,55 @@
         </header>
 
         <div class="segmented" role="group" aria-label="AI Provider Mode">
-          <button type="button" data-mode="cloud" class="seg-btn active">Cloud (OpenRouter)</button>
-          <button type="button" data-mode="local" class="seg-btn">Local Endpoint</button>
+          <button type="button" data-mode="cloud" class="seg-btn active">Cloud Dispatch (OpenRouter)</button>
+          <button type="button" data-mode="local" class="seg-btn">Local Basement Node</button>
         </div>
 
         <div id="cloudFields" class="field-group">
-          <label>
+          <label class="field">
             <span>OpenRouter API Key</span>
-            <input name="openrouterApiKey" type="password" placeholder="sk-or-v1-..." autocomplete="off" />
+            <input class="input mono" name="openrouterApiKey" type="password" placeholder="sk-or-v1-..." autocomplete="off" />
           </label>
+
+          <div class="field">
+            <span>Provider Routing Strategy</span>
+            <select name="providerRouting" id="providerRoutingSelect" hidden>
+              <option value="auto">Default (Auto)</option>
+              <option value="price">Cheapest (sort: price)</option>
+              <option value="throughput">Fastest (sort: throughput)</option>
+            </select>
+            <div class="routing-cards" role="radiogroup" aria-label="Provider Routing Strategy">
+              <button type="button" class="route-card active" data-route="auto">
+                <strong>Default (Auto)</strong>
+                <span>OpenRouter picks route</span>
+              </button>
+              <button type="button" class="route-card" data-route="price">
+                <strong>Moritz Budget</strong>
+                <span>Cheapest (sort: price)</span>
+              </button>
+              <button type="button" class="route-card" data-route="throughput">
+                <strong>Lenny Speed</strong>
+                <span>Fastest (throughput)</span>
+              </button>
+            </div>
+          </div>
+
           <div class="two-col">
-            <label>
+            <label class="field">
               <span>STT Model</span>
-              <input name="sttModel" type="text" placeholder="openai/whisper-large-v3" />
+              <input class="input mono" name="sttModel" type="text" placeholder="openai/whisper-large-v3" />
             </label>
-            <label>
+            <label class="field">
               <span>Summary &amp; Vision Model</span>
-              <input name="llmModel" type="text" placeholder="google/gemini-2.5-flash" />
+              <input class="input mono" name="llmModel" type="text" placeholder="google/gemini-2.5-flash" />
             </label>
           </div>
-          <div class="two-col">
-            <label>
-              <span>Provider Routing</span>
-              <select name="providerRouting">
-                <option value="auto">Default (Auto)</option>
-                <option value="price">Cheapest (sort: price)</option>
-                <option value="throughput">Fastest (sort: throughput)</option>
-              </select>
-            </label>
-            <label>
-              <span>Preferred Providers (optional)</span>
-              <input name="preferredProviders" type="text" placeholder="e.g. relace, deepinfra" />
-            </label>
-          </div>
+
+          <label class="field">
+            <span>Preferred Providers (optional)</span>
+            <input class="input mono" name="preferredProviders" type="text" placeholder="e.g. relace, deepinfra" />
+          </label>
+
           <label class="checkbox-field">
             <input id="setting-jev-enabled" name="jevEnabled" type="checkbox" />
             <span>Experimental: Calibrate Exam Radar via OpenRouter Jev (<code>typesafe/jev-latest</code>)</span>
@@ -213,56 +341,65 @@
 
         <div id="localFields" class="field-group" hidden>
           <div class="two-col">
-            <label><span>Local STT URL</span><input name="localSttUrl" type="url" /></label>
-            <label><span>Local STT Model</span><input name="localSttModel" type="text" /></label>
+            <label class="field"><span>Local STT URL</span><input class="input mono" name="localSttUrl" type="url" /></label>
+            <label class="field"><span>Local STT Model</span><input class="input mono" name="localSttModel" type="text" /></label>
           </div>
           <div class="two-col">
-            <label><span>Local LLM URL</span><input name="localLlmUrl" type="url" /></label>
-            <label><span>Local Vision/LLM Model</span><input name="localLlmModel" type="text" /></label>
+            <label class="field"><span>Local LLM URL</span><input class="input mono" name="localLlmUrl" type="url" /></label>
+            <label class="field"><span>Local Vision/LLM Model</span><input class="input mono" name="localLlmModel" type="text" /></label>
           </div>
         </div>
 
-        <label>
+        <label class="field">
           <span>Default Course Hint</span>
-          <input name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
+          <input class="input" name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
         </label>
+
         <div class="two-col">
-          <label>
+          <label class="field">
             <span>MS Whiteboard Capture</span>
-            <select name="whiteboardMode">
+            <select class="input" name="whiteboardMode">
               <option value="off">Off</option>
               <option value="match">Matching Meetings Only</option>
               <option value="always">Always On</option>
             </select>
           </label>
-          <label>
+          <label class="field">
             <span>Whiteboard Meeting Keywords</span>
-            <input name="whiteboardMeetings" type="text" placeholder="e.g. Algebra, Calculus, Math" />
+            <input class="input" name="whiteboardMeetings" type="text" placeholder="e.g. Algebra, Calculus, Math" />
           </label>
         </div>
-        <p class="helper-note">Language detection and note output language are automatic (RO/EN). Tip: for GLM-5.3-Flash, pick Cheapest routing or list a provider slug.</p>
+
+        <p class="helper-note">Automatic RO/EN detection stays locked on — zero telemetry, zero server storage. Tip: for GLM-5.3-Flash, pick Moritz Budget or list a provider slug.</p>
 
         <footer class="modal-foot">
+          <span class="mono" style="font-size:12px;color:var(--muted);">Stored locally in extension storage</span>
           <button type="submit" class="btn btn-primary">Save Settings</button>
         </footer>
       </form>
     </dialog>
 
-    <dialog id="groupModal" class="modal">
-      <form id="groupForm" class="modal-card" method="dialog">
+    <!-- Group / Rename Modal -->
+    <dialog id="groupModal" class="modal" style="max-width:420px;" aria-labelledby="groupModalTitle">
+      <form id="groupForm" class="modal-card cmd-modal" method="dialog">
         <header class="modal-head">
-          <h3>Group / Move Recording</h3>
-          <button id="closeGroupBtn" type="button" class="btn btn-icon-only" aria-label="Close">✕</button>
+          <h3 id="groupModalTitle">Group / Move Recording</h3>
+          <button id="closeGroupBtn" type="button" class="btn btn-sm btn-icon" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
         </header>
-        <label>
+        <label class="field">
           <span>Subject</span>
-          <input id="groupSubjectInput" name="subject" type="text" placeholder="e.g. Mathematical Logic" required />
+          <input id="groupSubjectInput" class="input" name="subject" type="text" placeholder="e.g. Mathematical Logic" required />
         </label>
-        <label>
+        <label class="field">
           <span>Lesson title (optional)</span>
-          <input id="groupLessonTitleInput" name="lessonTitle" type="text" placeholder="e.g. Week 7 — Completeness" />
+          <input id="groupLessonTitleInput" class="input" name="lessonTitle" type="text" placeholder="e.g. Week 7 — Completeness" />
         </label>
         <footer class="modal-foot">
+          <span></span>
           <button type="submit" class="btn btn-primary">Apply</button>
         </footer>
       </form>

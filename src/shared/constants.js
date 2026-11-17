@@ -21,6 +21,23 @@ export const DEFAULT_SETTINGS = {
   localLlmUrl: 'http://localhost:11434/v1/chat/completions',
   localLlmModel: 'qwen2.5vl:7b',
   defaultCourseHint: '',
+  whiteboardMode: 'off',
+  whiteboardMeetings: '',
+};
+
+export const WHITEBOARD_ORIGINS = [
+  'https://teams.microsoft.com/*',
+  'https://teams.cloud.microsoft/*',
+  'https://whiteboard.office.com/*',
+  'https://*.whiteboard.microsoft.com/*',
+];
+
+export const WHITEBOARD_CONFIG = {
+  INTERVAL_MS: 25_000,
+  MIN_COOLDOWN_SEC: 15,
+  MAX_CAPTURES: 50,
+  EXPORT_WIDTH: 1920,
+  EXPORT_HEIGHT: 1080,
 };
 
 export const RECORDING_CONFIG = {

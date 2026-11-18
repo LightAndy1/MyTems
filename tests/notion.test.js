@@ -19,7 +19,7 @@ describe('notesToNotionMarkdown', () => {
             startSec: 120,
             endSec: 600,
             bullets: ['Page size is 4KB'],
-            formulas: ['VA = VPN + offset'],
+            formulas: ['VA = VPN + offset', '`$x^2 + y^2 = r^2$`'],
             slideRefs: [0],
           },
         ],
@@ -32,6 +32,9 @@ describe('notesToNotionMarkdown', () => {
     assert.match(md, /> \[!IMPORTANT\] Exam & Deadline Radar/);
     assert.match(md, /Lab 2 due Friday \(Due: 2026-11-20\) — `01:15`/);
     assert.match(md, /## Virtual Memory \(`02:00` - `10:00`\)/);
+    assert.match(md, /\$\$VA = VPN \+ offset\$\$/);
+    assert.match(md, /\$\$x\^2 \+ y\^2 = r\^2\$\$/);
+    assert.ok(!md.includes('- Formula: `'));
     assert.match(md, /!\[\]\(slides\/001_125\.jpg\)/);
     assert.match(md, /\*\*TLB\*\* \(`05:10`\): Translation Lookaside Buffer/);
   });

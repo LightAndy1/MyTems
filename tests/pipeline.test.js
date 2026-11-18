@@ -11,10 +11,12 @@ import {
 } from '../src/dashboard/ai-client.js';
 import {
   mergeTranscriptSegments,
+  buildSttChunkPrompt,
   buildVisionMessages,
   buildLessonVisionMessages,
   runLecturePipeline,
   runTranscriptionOnly,
+  runSlidesOnly,
   runLessonTranscription,
   runLessonPipeline,
 } from '../src/dashboard/pipeline.js';
@@ -241,6 +243,8 @@ describe('AI pipeline & client helpers', () => {
     assert.equal(messages.length, 2);
     assert.equal(messages[0].role, 'system');
     assert.match(messages[0].content, /Romanian or English/);
+    assert.match(messages[0].content, /independently verify all mathematical\/technical derivations/);
+    assert.match(messages[0].content, /raw LaTeX/);
     assert.equal(messages[1].role, 'user');
     assert.equal(messages[1].content[0].type, 'text');
     assert.match(messages[1].content[0].text, /Course\/Context hint: Algorithms/);
@@ -637,5 +641,54 @@ describe('AI pipeline & client helpers', () => {
     assert.equal(jevCalls, 1);
     assert.equal(onRes.notes.examRadar[0].confidence, 0.94);
     assert.equal(onRes.notes.totalCostUsd, 0.011);
+  });
+
+  it('extracts slides locally at $0 cost and preserves existing status', async () => {
+    const lectures = {
+      p1: { id: 'p1', title: 'Math', durationSec: 2640, status: 'recorded' },
+      p2: { id: 'p2', title: 'Math', durationSec: 900, status: 'transcribed' },
+    };
+    const slides = { p1: [], p2: [] };
+    let extractCalls = 0;
+
+    const res = await runSlidesOnly({
+      lectureIds: ['p1', 'p2'],
+      deps: {
+        getLecture: async (id) => lectures[id],
+        upsertLecture: async (patch) => {
+          lectures[patch.id] = { ...lectures[patch.id], ...patch };
+          return lectures[patch.id];
+        },
+        listDirFiles: async (id, dir) => (dir === 'slides' ? slides[id] : []),
+        readLectureFile: async () => new Blob(['video']),
+        readLectureJson: async (id, name) => (id === 'p2' && name === 'transcript.json' ? { segments: [{ text: 'hi' }] } : null),
+        extractSlidesFromVideo: async (_vf, id) => {
+          extractCalls += 1;
+          slides[id] = id === 'p1' ? ['001_12.jpg', '002_60.jpg'] : ['001_8.jpg'];
+        },
+      },
+    });
+
+    assert.equal(extractCalls, 2);
+    assert.equal(res.totalSlides, 3);
+    assert.equal(lectures.p1.slidesExtracted, true);
+    assert.equal(lectures.p1.status, 'recorded');
+    assert.equal(lectures.p2.status, 'transcribed');
+  });
+
+  it('pins domain prefix and truncates prior chunk tail within 220 chars for STT prompts', () => {
+    const fullChunk0 = buildSttChunkPrompt(
+      'Curs universitar de matematică în limba română: inducție matematică, verificare, presupunem P(k) adevărată, demonstrăm P(k+1), radical, factorial, divizibilitate, inegalitate.',
+      ''
+    );
+    assert.equal(
+      fullChunk0,
+      'Curs universitar de matematică în limba română: inducție matematică, verificare, presupunem P(k) adevărată, demonstrăm P(k+1), radical, factorial, divizibilitate, inegalitate.'
+    );
+    const longPrev = 'A'.repeat(250) + ' inducție matematică P(k+1)';
+    const prompt = buildSttChunkPrompt('Analiza Matematică', longPrev);
+    assert.ok(prompt.length <= 220);
+    assert.ok(prompt.startsWith('Analiza Matematică: '));
+    assert.match(prompt, /P\(k\+1\)$/);
   });
 });

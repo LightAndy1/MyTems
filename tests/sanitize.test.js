@@ -77,4 +77,10 @@ describe('sanitize helpers', () => {
     assert.ok(tail.length <= 18);
     assert.equal(tail, 'delta epsilon zeta');
   });
+
+  it('strips repeated fragments and keeps last 1-2 clean sentences in tail prompt', () => {
+    const noisy = 'Prima propoziție veche. Deci deci deci verificăm cazul de bază. Continuăm cu P(k+1) P(k+1).';
+    const tail = buildTranscriptTailPrompt(noisy, 220);
+    assert.equal(tail, 'Deci verificăm cazul de bază. Continuăm cu P(k+1).');
+  });
 });

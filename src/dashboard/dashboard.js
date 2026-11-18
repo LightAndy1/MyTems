@@ -1,4 +1,4 @@
-import { WHITEBOARD_ORIGINS } from '../shared/constants.js';
+import { HINT_PRESETS, WHITEBOARD_ORIGINS } from '../shared/constants.js';
 import {
   buildDownloadFilename,
   formatLocalDateTimeParts,
@@ -39,6 +39,7 @@ import {
   runLecturePipeline,
   runLessonPipeline,
   runLessonTranscription,
+  runSlidesOnly,
   runTranscriptionOnly,
 } from './pipeline.js';
 
@@ -50,6 +51,7 @@ let catalogStatusFilter = 'all';
 let activeViewMode = 'lecture';
 let activeLessonId = null;
 let selectedId = null;
+let focusedPartId = null;
 let selectSeq = 0;
 let currentVideoUrl = null;
 let slideUrls = [];
@@ -126,13 +128,28 @@ function triggerBlobDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
+function syncActiveRailSelection() {
+  const highlightedPartId = activeViewMode === 'lesson' ? focusedPartId : selectedId;
+  for (const item of el('lectureList').querySelectorAll('.lecture-item')) {
+    item.classList.toggle('active', item.dataset.lectureId === highlightedPartId);
+  }
+  for (const header of el('lectureList').querySelectorAll('.lesson-header')) {
+    header.classList.toggle(
+      'active',
+      activeViewMode === 'lesson' && header.dataset.lessonId === activeLessonId
+    );
+  }
+}
+
 async function seekTo(sec, partId = null) {
   const player = el('videoPlayer');
   if (partId && partId !== selectedId) {
     const seq = selectSeq;
     selectedId = partId;
+    if (activeViewMode === 'lesson') focusedPartId = partId;
     const lesson = activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
     renderPartSwitcher(lesson);
+    syncActiveRailSelection();
     await loadVideoPart(partId, seq);
     if (seq !== selectSeq) return;
     currentTranscript = await readLectureJson(partId, 'transcript.json');
@@ -145,6 +162,7 @@ async function seekTo(sec, partId = null) {
       });
     }
   }
+  highlightActiveSlide(sec);
   if (!player.hidden && player.src) {
     player.currentTime = Math.max(0, sec);
     player.play().catch(() => {});
@@ -268,7 +286,9 @@ function renderPartRow(lec, meta, lesson) {
   const cb = makeSelectCheckbox(checkedIds.has(lec.id), false, (checked) => toggleCheckedIds([lec.id], checked));
 
   const item = document.createElement('div');
-  item.className = `lecture-item${lec.id === selectedId ? ' active' : ''}`;
+  const highlightedPartId = activeViewMode === 'lesson' ? focusedPartId : selectedId;
+  item.className = `lecture-item${lec.id === highlightedPartId ? ' active' : ''}`;
+  item.dataset.lectureId = lec.id;
 
   const main = document.createElement('div');
   main.className = 'lecture-item-main';
@@ -290,8 +310,12 @@ function renderPartRow(lec, meta, lesson) {
   const dlBtn = makeQuickDownloadBtn('Download .webm', () => downloadLectureVideo(lec.id));
   item.append(main, dlBtn);
   item.addEventListener('click', () => {
-    if (lesson.isGroup) selectLesson(lesson.lessonId, lec.id);
-    else selectLecture(lec.id);
+    if (lesson.isGroup) {
+      const isSameFocused = activeViewMode === 'lesson' && activeLessonId === lesson.lessonId && focusedPartId === lec.id;
+      selectLesson(lesson.lessonId, isSameFocused ? null : lec.id);
+    } else {
+      selectLecture(lec.id);
+    }
   });
 
   wrap.append(cb, item);
@@ -365,6 +389,7 @@ async function renderLectureList() {
         const lessonChecked = lessonIds.filter((id) => checkedIds.has(id)).length;
         const lessonHeader = document.createElement('div');
         lessonHeader.className = `lesson-header${activeViewMode === 'lesson' && activeLessonId === lesson.lessonId ? ' active' : ''}`;
+        lessonHeader.dataset.lessonId = lesson.lessonId;
 
         const lessonCb = makeSelectCheckbox(
           lessonChecked === lessonIds.length && lessonIds.length > 0,
@@ -686,6 +711,10 @@ function renderPartSwitcher(lesson) {
     return;
   }
   bar.hidden = false;
+  const label = document.createElement('span');
+  label.className = 'part-switcher-label';
+  label.textContent = `Preview video (actions process all ${lesson.parts.length} parts):`;
+  bar.appendChild(label);
   lesson.parts.forEach((p, idx) => {
     const { displayTime } = formatLocalDateTimeParts(p.startedAtMs || p.createdAt);
     const pill = document.createElement('button');
@@ -700,11 +729,18 @@ function renderPartSwitcher(lesson) {
 function renderStudyDesk() {
   const hasNotes = Boolean(currentNotes);
   const hasTranscript = Boolean(currentTranscript?.segments?.length);
+  const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
+  const partCount = lesson && lesson.parts.length > 1 ? lesson.parts.length : 0;
 
   el('copyNotionBtn').disabled = !hasNotes;
   el('zipNotionBtn').disabled = !hasNotes;
-  el('transcribeOnlyBtn').textContent = hasTranscript ? 'Re-transcribe ($0 LLM)' : 'Transcribe Only ($0 LLM)';
-  el('summarizeBtn').textContent = hasNotes ? 'Regenerate Notes' : 'Generate Notes';
+  el('extractSlidesBtn').textContent = partCount ? `Extract Slides (All ${partCount} Parts · $0)` : 'Extract Slides ($0)';
+  el('transcribeOnlyBtn').textContent = partCount
+    ? (hasTranscript ? `Re-transcribe All ${partCount} Parts ($0 LLM)` : `Transcribe All ${partCount} Parts ($0 LLM)`)
+    : (hasTranscript ? 'Re-transcribe ($0 LLM)' : 'Transcribe Only ($0 LLM)');
+  el('summarizeBtn').textContent = partCount
+    ? (hasNotes ? `Regenerate Lesson Notes (${partCount} Parts)` : `Generate Lesson Notes (${partCount} Parts)`)
+    : (hasNotes ? 'Regenerate Notes' : 'Generate Notes');
 
   el('radarCard').hidden = !(currentNotes?.examRadar?.length);
   el('unprocessedCard').hidden = hasNotes || hasTranscript;
@@ -823,6 +859,7 @@ async function selectLecture(id) {
   activeViewMode = 'lecture';
   activeLessonId = null;
   selectedId = id;
+  focusedPartId = id;
   revokeObjectUrls();
   el('storageMenu').open = false;
   await renderLectureList();
@@ -841,6 +878,7 @@ async function selectLecture(id) {
   el('lecTitle').textContent = lec.title;
   el('lecSubjectInput').value = resolveLectureSubject(lec);
   el('lecCourseHint').value = lec.courseHint || '';
+  syncHintPresetSelect(el('lecCourseHint').value);
   renderPartSwitcher(null);
 
   const isRecording = lec.status === 'recording';
@@ -874,6 +912,7 @@ async function selectLesson(lessonId, focusPartId = null) {
   const seq = ++selectSeq;
   activeViewMode = 'lesson';
   activeLessonId = lessonId;
+  focusedPartId = focusPartId || null;
   revokeObjectUrls();
   el('storageMenu').open = false;
   await renderLectureList();
@@ -887,12 +926,14 @@ async function selectLesson(lessonId, focusPartId = null) {
   }
   const part = lesson.parts.find((p) => p.id === focusPartId) || lesson.parts[0];
   selectedId = part.id;
+  syncActiveRailSelection();
 
   el('emptyState').hidden = true;
   el('lectureView').hidden = false;
   el('lecTitle').textContent = lesson.title;
   el('lecSubjectInput').value = lesson.subject;
   el('lecCourseHint').value = part.courseHint || '';
+  syncHintPresetSelect(el('lecCourseHint').value);
   renderPartSwitcher(lesson);
 
   const anyRecording = lesson.parts.some((p) => p.status === 'recording');
@@ -1024,15 +1065,38 @@ async function downloadLecturesSequentially(ids, kind = 'video') {
 }
 
 async function runWithBusyButtons(fn) {
+  el('extractSlidesBtn').disabled = true;
   el('transcribeOnlyBtn').disabled = true;
   el('summarizeBtn').disabled = true;
   try {
     await fn();
   } finally {
+    el('extractSlidesBtn').disabled = false;
     el('transcribeOnlyBtn').disabled = false;
     el('summarizeBtn').disabled = false;
   }
 }
+
+el('extractSlidesBtn').addEventListener('click', () => {
+  if (!selectedId) return;
+  const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
+  const targetId = selectedId;
+  const lectureIds = lesson && lesson.parts.length > 1 ? lesson.parts.map((p) => p.id) : [targetId];
+  runWithBusyButtons(async () => {
+    setBanner('Starting local slide extraction ($0)...');
+    try {
+      const { totalSlides } = await runSlidesOnly({
+        lectureIds,
+        onStage: (msg) => setBanner(msg),
+      });
+      if (lesson && lesson.parts.length > 1) await selectLesson(lesson.lessonId, focusedPartId);
+      else await selectLecture(targetId);
+      setBanner(`Slide extraction finished ($0 spent): ${totalSlides} slide(s) ready in Slides & Attachments.`);
+    } catch (err) {
+      setBanner(err?.message || String(err), true);
+    }
+  });
+});
 
 el('transcribeOnlyBtn').addEventListener('click', () => {
   if (!selectedId) return;
@@ -1050,7 +1114,7 @@ el('transcribeOnlyBtn').addEventListener('click', () => {
           onStage: (msg) => setBanner(msg),
         });
         activeTab = 'transcript';
-        await selectLesson(lesson.lessonId, targetId);
+        await selectLesson(lesson.lessonId, focusedPartId);
       } else {
         await runTranscriptionOnly({
           lectureId: targetId,
@@ -1094,7 +1158,7 @@ el('summarizeBtn').addEventListener('click', () => {
           onStage: (msg) => setBanner(msg),
         });
         activeTab = 'notes';
-        await selectLesson(lesson.lessonId, targetId);
+        await selectLesson(lesson.lessonId, focusedPartId);
       } else {
         await runLecturePipeline({
           lectureId: targetId,
@@ -1165,7 +1229,7 @@ el('freeMediaBtn').addEventListener('click', async () => {
     const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
     const ids = lesson ? lesson.parts.map((p) => p.id) : [selectedId];
     for (const id of ids) await freeLectureMedia(id);
-    if (lesson) await selectLesson(lesson.lessonId, selectedId);
+    if (lesson) await selectLesson(lesson.lessonId, focusedPartId);
     else await selectLecture(selectedId);
   } catch (err) {
     setBanner(err?.message || String(err), true);
@@ -1180,6 +1244,7 @@ el('deleteLectureBtn').addEventListener('click', async () => {
     const idsToDelete = lesson ? lesson.parts.map((p) => p.id) : [selectedId];
     selectSeq += 1;
     selectedId = null;
+    focusedPartId = null;
     activeLessonId = null;
     currentNotes = null;
     currentTranscript = null;
@@ -1197,6 +1262,35 @@ el('deleteLectureBtn').addEventListener('click', async () => {
     setBanner(err?.message || String(err), true);
   }
 });
+
+function syncHintPresetSelect(hintValue) {
+  const select = el('hintPresetSelect');
+  if (!select) return;
+  const trimmed = String(hintValue || '').trim();
+  const match = HINT_PRESETS.find((p) => p.hint === trimmed);
+  select.value = match ? match.id : '';
+}
+
+const hintPresetSelect = el('hintPresetSelect');
+if (hintPresetSelect) {
+  for (const preset of HINT_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = preset.id;
+    opt.textContent = preset.label;
+    hintPresetSelect.appendChild(opt);
+  }
+  hintPresetSelect.addEventListener('change', async () => {
+    const preset = HINT_PRESETS.find((p) => p.id === hintPresetSelect.value);
+    if (!preset) return;
+    el('lecCourseHint').value = preset.hint;
+    if (!selectedId) return;
+    const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
+    const ids = lesson ? lesson.parts.map((p) => p.id) : [selectedId];
+    await updateLectures(ids, { courseHint: preset.hint });
+  });
+}
+
+el('lecCourseHint').addEventListener('input', (e) => syncHintPresetSelect(e.target.value));
 
 el('lecSubjectInput').addEventListener('change', async () => {
   if (!selectedId) return;
@@ -1292,7 +1386,7 @@ el('batchFreeBtn').addEventListener('click', async () => {
   }
   await renderLectureList();
   if (selectedId && checkedIds.has(selectedId)) {
-    if (activeViewMode === 'lesson' && activeLessonId) await selectLesson(activeLessonId, selectedId);
+    if (activeViewMode === 'lesson' && activeLessonId) await selectLesson(activeLessonId, focusedPartId);
     else await selectLecture(selectedId);
   }
 });
@@ -1315,6 +1409,7 @@ el('batchDeleteBtn').addEventListener('click', async () => {
   }
   if (selectedId && ids.includes(selectedId)) {
     selectedId = null;
+    focusedPartId = null;
     activeLessonId = null;
     el('emptyState').hidden = false;
     el('lectureView').hidden = true;

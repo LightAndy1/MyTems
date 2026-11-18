@@ -66,6 +66,42 @@ export function mergeTranscriptSegments(chunkResults) {
   };
 }
 
+const SHARED_NOTE_RULES = [
+  "Write notes in natural, idiomatic, grammatically correct academic language matching the lecture's primary spoken language (Romanian or English), preserving English technical terms verbatim.",
+  'The Whisper STT transcript may contain garbled inflections, broken grammar, or phonetically misheard technical/mathematical terms (due to ASR errors or non-native accents); rewrite into clean academic prose and NEVER copy awkward or garbled STT phrasing.',
+  'Use slide/whiteboard images and course context to fix transcript errors, but independently verify all mathematical/technical derivations: if the board or speaker contains an algebraic, sign, or factual slip, keep the intended theorem/concept, show the correct step (with a brief note in the lecture\'s language flagging the board error), and preserve variable domains (e.g., $n \\in \\mathbb{N}^*$, $n \\ge 2$).',
+  'Format math cleanly: put raw LaTeX (no $ wrappers or backticks) inside "formulas". For "summary", "chapters[].title", "bullets", "definitions", and "examRadar[].text", wrap ALL mathematical expressions—including variables, $P(k)$, subscripts/superscripts, roots, trig terms, and inequalities—in $...$ LaTeX (never use raw ^/_ outside $...$ or Unicode math like ², √, ≤).',
+];
+
+function trimAtWordEnd(text, maxChars) {
+  const clean = String(text || '').trim().replace(/\s+/g, ' ');
+  if (clean.length <= maxChars) return clean;
+  const cut = clean.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+function buildSeedPrompt(lecture, activeHint) {
+  if (activeHint) return activeHint;
+  const topic = (lecture?.subject || lecture?.title || '').trim();
+  return topic ? `University lecture on ${topic}.` : '';
+}
+
+/**
+ * Seed Chunk 0 up to maxChars, or pin a short domain prefix + clean prior-chunk tail within maxChars.
+ */
+export function buildSttChunkPrompt(domainPrefix, prevChunkText = '', maxChars = 220) {
+  const domain = String(domainPrefix || '').trim().replace(/\s+/g, ' ');
+  const tailRaw = String(prevChunkText || '').trim().replace(/\s+/g, ' ');
+  if (!domain) return buildTranscriptTailPrompt(tailRaw, maxChars);
+  if (!tailRaw) return trimAtWordEnd(domain, maxChars);
+  const prefix = trimAtWordEnd(domain, 80);
+  const budget = maxChars - prefix.length - 2;
+  if (budget <= 20) return trimAtWordEnd(domain, maxChars);
+  const tail = buildTranscriptTailPrompt(tailRaw, budget);
+  return tail ? `${prefix}: ${tail}` : prefix;
+}
+
 /**
  * Build OpenAI-compatible vision chat messages combining transcript and slide frames.
  */
@@ -80,7 +116,10 @@ export function buildVisionMessages(transcript, slidePayloads, courseHint = '') 
 
   const system = [
     'You are an expert university lecture note-taker.',
-    'Write notes automatically in the lecture primary spoken language (Romanian or English), preserving English technical terms verbatim.',
+    ...SHARED_NOTE_RULES,
+    'Ensure chapter "startSec"/"endSec" span the full topic through its final wrap-up.',
+    'Only extract "definitions" when a concept/method is explicitly defined, using its accurate timestamp.',
+    'For "examRadar", include only concrete homework, deadlines, submission rules, or explicit exam/grading hints—exclude routine live-call logistics.',
     'Return ONLY valid JSON matching: { "summary": string, "chapters": [{ "title": string, "startSec": number, "endSec": number, "bullets": string[], "formulas": string[], "slideRefs": number[] }], "definitions": [{ "term": string, "definition": string, "timestampSec": number }], "examRadar": [{ "type": "exam_hint"|"deadline"|"homework", "text": string, "timestampSec": number, "dueDate": string|null }] }.',
   ].join(' ');
 
@@ -112,6 +151,7 @@ async function ensureTranscript({
   settings,
   activeHint,
   seedPrompt = '',
+  prevTail = '',
   force = false,
   onStage,
   resolvedDeps,
@@ -133,12 +173,12 @@ async function ensureTranscript({
   }
 
   const chunkResults = [];
-  const chunkTexts = [];
+  let lastChunkText = prevTail;
   for (let i = 0; i < segmentsMeta.length; i++) {
     onStage(`Transcribing part ${i + 1}/${segmentsMeta.length}...`);
     const seg = segmentsMeta[i];
     const blob = await resolvedDeps.readLectureFile(lectureId, seg.filename);
-    const prompt = buildTranscriptTailPrompt([seedPrompt, ...chunkTexts].filter(Boolean).join(' '));
+    const prompt = buildSttChunkPrompt(seedPrompt, lastChunkText);
     const result = await resolvedDeps.transcribeAudioSegment({
       settings,
       blob,
@@ -146,7 +186,7 @@ async function ensureTranscript({
       prompt,
     });
     chunkResults.push({ offsetSec: seg.offsetSec, result });
-    if (result?.text) chunkTexts.push(result.text);
+    if (result?.text) lastChunkText = result.text;
   }
   transcript = mergeTranscriptSegments(chunkResults);
   await resolvedDeps.writeLectureJson(lectureId, 'transcript.json', transcript);
@@ -180,6 +220,52 @@ async function ensureSlidesForLecture({ lectureId, lecture, onStage, resolvedDep
 }
 
 /**
+ * Extract video slides locally ($0 AI cost) for one or more lectures without running STT or LLM.
+ */
+export async function runSlidesOnly({
+  lectureIds,
+  onStage = () => {},
+  deps = DEFAULT_DEPS,
+}) {
+  if (!Array.isArray(lectureIds) || lectureIds.length === 0) {
+    throw new Error('No lecture selected for slide extraction.');
+  }
+  const resolvedDeps = deps === DEFAULT_DEPS ? DEFAULT_DEPS : { ...DEFAULT_DEPS, ...deps };
+  const slidesById = {};
+  let totalSlides = 0;
+
+  for (let i = 0; i < lectureIds.length; i++) {
+    const lectureId = lectureIds[i];
+    const lecture = await resolvedDeps.getLecture(lectureId);
+    if (!lecture) throw new Error(`Lecture ${lectureId} not found`);
+    const prefix = lectureIds.length > 1 ? `Part ${i + 1}/${lectureIds.length}: ` : '';
+    try {
+      onStage(`${prefix}Extracting slides ($0)...`);
+      await resolvedDeps.upsertLecture({ id: lectureId, status: 'extracting_slides', error: '' });
+      const slides = await ensureSlidesForLecture({
+        lectureId,
+        lecture,
+        onStage: (msg) => onStage(`${prefix}${msg}`),
+        resolvedDeps,
+      });
+      const [existingNotes, existingTranscript] = await Promise.all([
+        resolvedDeps.readLectureJson(lectureId, 'notes.json'),
+        resolvedDeps.readLectureJson(lectureId, 'transcript.json'),
+      ]);
+      const restoredStatus = existingNotes ? 'ready' : existingTranscript ? 'transcribed' : 'recorded';
+      await resolvedDeps.upsertLecture({ id: lectureId, status: restoredStatus, error: '' });
+      slidesById[lectureId] = slides;
+      totalSlides += slides.length;
+    } catch (err) {
+      await resolvedDeps.upsertLecture({ id: lectureId, status: 'error', error: err?.message || String(err) });
+      throw err;
+    }
+  }
+
+  return { slidesById, totalSlides };
+}
+
+/**
  * Run transcription only (Stage 1 STT, $0 LLM) and save transcript.json.
  */
 export async function runTranscriptionOnly({
@@ -198,11 +284,13 @@ export async function runTranscriptionOnly({
   const activeHint = (courseHint ?? lecture.courseHint ?? settings.defaultCourseHint ?? '').trim();
 
   try {
+    const seedPrompt = buildSeedPrompt(lecture, activeHint);
     const { transcript } = await ensureTranscript({
       lectureId,
       lecture,
       settings,
       activeHint,
+      seedPrompt,
       force,
       onStage,
       resolvedDeps,
@@ -239,11 +327,13 @@ export async function runLecturePipeline({
   const activeHint = (courseHint ?? lecture.courseHint ?? settings.defaultCourseHint ?? '').trim();
 
   try {
+    const seedPrompt = buildSeedPrompt(lecture, activeHint);
     const { transcript } = await ensureTranscript({
       lectureId,
       lecture,
       settings,
       activeHint,
+      seedPrompt,
       force: false,
       onStage,
       resolvedDeps,
@@ -312,9 +402,12 @@ export function buildLessonVisionMessages(
   const system = [
     'You are an expert university lecture note-taker synthesizing a multi-part lecture from the same class.',
     'Connect topics across parts coherently without repeating the intro.',
-    'Write notes automatically in the lecture primary spoken language (Romanian or English), preserving English technical terms verbatim.',
+    ...SHARED_NOTE_RULES,
+    'Ensure chapter "startSec"/"endSec" span the full topic within each part through its wrap-up.',
+    'Only extract "definitions" when a concept/method is explicitly defined.',
+    'For "examRadar", include only concrete homework, deadlines, submission rules, or explicit exam/grading hints—exclude routine live-call logistics.',
     'Return ONLY valid JSON matching: { "summary": string, "chapters": [{ "title": string, "partIndex": number, "startSec": number, "endSec": number, "bullets": string[], "formulas": string[], "slideRefs": number[] }], "definitions": [{ "term": string, "definition": string, "partIndex": number, "timestampSec": number }], "examRadar": [{ "type": "exam_hint"|"deadline"|"homework", "text": string, "partIndex": number, "timestampSec": number, "dueDate": string|null }] }.',
-    'Use 1-based partIndex matching the transcript part where each chapter, definition, or radar item appears.',
+    'Use 1-based partIndex matching the transcript part where each item appears.',
   ].join(' ');
 
   const userContent = [
@@ -363,8 +456,7 @@ export async function runLessonTranscription({
     const lecture = await resolvedDeps.getLecture(lectureId);
     if (!lecture) throw new Error(`Lecture ${lectureId} not found`);
     const activeHint = (courseHint ?? lecture.courseHint ?? settings.defaultCourseHint ?? '').trim();
-    const subjectOrHint = (lecture.subject || activeHint || lecture.title || '').trim();
-    const seedPrompt = [subjectOrHint, prevTail].filter(Boolean).join(': ');
+    const subjectOrHint = buildSeedPrompt(lecture, activeHint);
 
     try {
       const { transcript } = await ensureTranscript({
@@ -372,7 +464,8 @@ export async function runLessonTranscription({
         lecture,
         settings,
         activeHint,
-        seedPrompt,
+        seedPrompt: subjectOrHint,
+        prevTail,
         force,
         onStage: (msg) => onStage(`Part ${i + 1}/${lectureIds.length}: ${msg}`),
         resolvedDeps,

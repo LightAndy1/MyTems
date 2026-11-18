@@ -725,7 +725,7 @@ select {
 
 .lecture-item.active {
   background: var(--accent-soft);
-  border-color: rgba(0, 87, 255, 0.25);
+  border-color: var(--accent);
 }
 
 .lecture-item-main {
@@ -901,12 +901,19 @@ select {
   color: var(--muted);
 }
 
-.inline-field input {
+.inline-field input,
+.inline-field select {
   border: none;
   background: transparent;
   outline: none;
   font-size: 13px;
+  color: inherit;
   min-width: 130px;
+}
+
+.inline-field select {
+  min-width: 0;
+  cursor: pointer;
 }
 
 .inline-field.wide input {
@@ -974,8 +981,15 @@ select {
 
 .part-switcher {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.part-switcher-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: 2px;
 }
 
 .part-pill {

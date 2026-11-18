@@ -41,6 +41,7 @@ describe('calibrateExamRadarWithJev', () => {
     expect(calls[0].init.headers.Authorization).toBe('Bearer sk-or-test');
     expect(calls[0].init.body.model).toBe('typesafe/jev-latest');
     expect(calls[0].init.body.response_format).toEqual({ type: 'json_object' });
+    expect(calls[0].init.body.messages[0].content).toContain('0.85–1.0');
 
     expect(result.costUsd).toBe(0.0004);
     expect(result.items).toEqual([

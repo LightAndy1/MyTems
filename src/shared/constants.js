@@ -27,6 +27,14 @@ export const DEFAULT_SETTINGS = {
   jevModel: 'typesafe/jev-latest',
 };
 
+export const HINT_PRESETS = [
+  {
+    id: 'ro-math-induction',
+    label: 'RO Math (Inducție / Serii)',
+    hint: 'Curs universitar de matematică în limba română: inducție matematică, verificare, presupunem P(k) adevărată, demonstrăm P(k+1), radical, factorial, divizibilitate, inegalitate.',
+  },
+];
+
 export const WHITEBOARD_ORIGINS = [
   'https://teams.microsoft.com/*',
   'https://teams.cloud.microsoft/*',

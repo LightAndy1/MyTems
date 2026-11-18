@@ -145,10 +145,17 @@
                       <span>Hint</span>
                       <input id="lecCourseHint" type="text" placeholder="Optional topic (improves RO + EN technical terms)" />
                     </label>
+                    <label class="inline-field">
+                      <span>Preset</span>
+                      <select id="hintPresetSelect" aria-label="Preset hints">
+                        <option value="">Custom</option>
+                      </select>
+                    </label>
                   </div>
                 </div>
 
                 <div class="actions">
+                  <button id="extractSlidesBtn" class="btn btn-sm" title="Extract changed video frames locally ($0)">Extract Slides ($0)</button>
                   <button id="transcribeOnlyBtn" class="btn btn-sm" title="Run speech-to-text only ($0 LLM)">Transcribe Only ($0 LLM)</button>
                   <button id="summarizeBtn" class="btn btn-sm btn-primary">Generate Notes</button>
                   <button id="copyNotionBtn" class="btn btn-sm" disabled>Copy Notion MD</button>

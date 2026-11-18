@@ -47,8 +47,18 @@ export function buildDownloadFilename(
 }
 
 export function buildTranscriptTailPrompt(text, maxChars = 220) {
-  const clean = String(text || '').trim().replace(/\s+/g, ' ');
-  if (!clean || clean.length <= maxChars) return clean;
+  const deduped = String(text || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/(^|\s)([^\s.!?]+(?:\s+[^\s.!?]+){0,2})(?:\s+\2)+(?=\s|[.,!?;:]|$)/giu, '$1$2');
+  if (!deduped) return '';
+  const sentences = deduped.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let clean = deduped;
+  if (sentences.length > 1) {
+    const lastTwo = sentences.slice(-2).join(' ');
+    clean = lastTwo.length <= maxChars ? lastTwo : sentences[sentences.length - 1];
+  }
+  if (clean.length <= maxChars) return clean;
   const slice = clean.slice(-maxChars);
   if (clean[clean.length - maxChars - 1] === ' ') return slice;
   const spaceIdx = slice.indexOf(' ');

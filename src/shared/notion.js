@@ -11,6 +11,14 @@ function resolveSlidePath(entry) {
   return entry.zipPath || `slides/${entry.filename}`;
 }
 
+function formatNotionFormula(formula) {
+  const clean = String(formula || '').trim().replace(/^`+|`+$/g, '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('$$') && clean.endsWith('$$')) return clean;
+  const inner = clean.startsWith('$') && clean.endsWith('$') ? clean.slice(1, -1).trim() : clean;
+  return `$$${inner}$$`;
+}
+
 /**
  * Serialize final AI-processed lecture or multi-part lesson notes into Notion-ready Markdown.
  * @param {object} lecture
@@ -51,7 +59,10 @@ export function notesToNotionMarkdown(lecture, notes, slideEntries = []) {
     const endCue = formatCue(ch.endSec, ch.partIndex, isMultiPart);
     lines.push('', `## ${ch.title} (\`${startCue}\` - \`${endCue}\`)`);
     for (const b of ch.bullets || []) lines.push(`- ${b}`);
-    for (const f of ch.formulas || []) lines.push(`- Formula: \`${f}\``);
+    for (const f of ch.formulas || []) {
+      const eq = formatNotionFormula(f);
+      if (eq) lines.push('', eq);
+    }
     for (const refIdx of ch.slideRefs || []) {
       const path = resolveSlidePath(slideEntries[refIdx]);
       if (path) lines.push('', `![](${path})`);

@@ -213,8 +213,13 @@ export async function calibrateExamRadarWithJev(items, transcriptSummary, settin
         messages: [
           {
             role: 'system',
-            content:
-              'You calibrate university lecture Exam Radar items (exam hints, deadlines, homework). Return ONLY valid JSON: { "scores": [{ "index": number, "confidence": number }] } where confidence is a calibrated probability between 0 and 1.',
+            content: [
+              'You calibrate university lecture Exam Radar items (exam hints, deadlines, homework). Assign a calibrated probability "confidence" in [0, 1] per item:',
+              '- 0.85–1.0: Explicit homework assignment, submission instructions, firm deadline, or direct statement of what will be on the exam/graded.',
+              '- 0.45–0.75: Indirect exam hint or next-lecture syllabus/topic preview.',
+              '- 0.0–0.35: Routine live-session logistics (e.g., staying connected, break times) or vague remarks.',
+              'Return ONLY valid JSON: { "scores": [{ "index": number, "confidence": number }] }.',
+            ].join('\n'),
           },
           {
             role: 'user',

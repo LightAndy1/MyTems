@@ -56,4 +56,49 @@ describe('notesToNotionMarkdown', () => {
     assert.match(md, /!\[\]\(slides\/pt2_001_120\.jpg\)/);
     assert.match(md, /\*\*Tautology\*\* \(`Pt 1 · 00:45`\)/);
   });
+
+  it('exports fenced codeblocks instead of KaTeX for coding notes and uses meeting headings in meeting mode', () => {
+    const codeMd = notesToNotionMarkdown(
+      { title: 'React Hooks', noteMode: 'code' },
+      {
+        noteMode: 'code',
+        summary: 'Use `useEffect` cleanly.',
+        chapters: [
+          {
+            title: 'Effect Cleanup',
+            startSec: 10,
+            endSec: 90,
+            bullets: ['Return a cleanup callback from `useEffect`.'],
+            formulas: [],
+            codeBlocks: [
+              { language: 'js', code: 'useEffect(() => {\n  return () => sub.unsubscribe();\n}, []);' },
+              { language: 'py', code: '```python\nprint(1)\n```' },
+              { language: 'md', code: 'Example:\n```\nnested\n```' },
+            ],
+            slideRefs: [],
+          },
+        ],
+        definitions: [],
+        examRadar: [],
+      }
+    );
+    assert.match(codeMd, /```js\nuseEffect\(\(\) => \{\n  return \(\) => sub\.unsubscribe\(\);\n\}, \[\]\);\n```/);
+    assert.match(codeMd, /```py\nprint\(1\)\n```/);
+    assert.match(codeMd, /````md\nExample:\n```\nnested\n```\n````/);
+    assert.ok(!codeMd.includes('$$'));
+
+    const meetingMd = notesToNotionMarkdown(
+      { title: 'Sprint Sync' },
+      {
+        noteMode: 'meeting',
+        summary: 'Aligned on API rollout.',
+        examRadar: [{ type: 'deadline', text: 'Ship v2 endpoint', timestampSec: 120, dueDate: '2026-11-22' }],
+        chapters: [{ title: 'API Contract', startSec: 0, endSec: 300, bullets: ['Keep `/v1` active.'], codeBlocks: [{ language: 'bash', code: 'curl -I /v2/health' }] }],
+        definitions: [{ term: 'Cutover', definition: 'Blue-green swap on Monday', timestampSec: 200 }],
+      }
+    );
+    assert.match(meetingMd, /> \[!IMPORTANT\] Action Items & Deadlines/);
+    assert.match(meetingMd, /## Key Decisions & Terms/);
+    assert.match(meetingMd, /```bash\ncurl -I \/v2\/health\n```/);
+  });
 });

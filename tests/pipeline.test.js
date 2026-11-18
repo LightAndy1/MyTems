@@ -691,4 +691,54 @@ describe('AI pipeline & client helpers', () => {
     assert.ok(prompt.startsWith('Analiza Matematică: '));
     assert.match(prompt, /P\(k\+1\)$/);
   });
+
+  it('builds code and meeting prompts without KaTeX wrapping for code and persists noteMode', async () => {
+    const codeMsgs = buildVisionMessages(
+      { segments: [{ startSec: 0, endSec: 5, text: 'Write async fetch' }] },
+      [],
+      'TypeScript',
+      'code'
+    );
+    assert.match(codeMsgs[0].content, /NEVER wrap code/);
+    assert.match(codeMsgs[0].content, /"codeBlocks"/);
+    assert.ok(!codeMsgs[0].content.includes('wrap ALL mathematical expressions'));
+
+    const meetingMsgs = buildLessonVisionMessages(
+      [{ partIndex: 1, lecture: { title: 'Sync' }, transcript: { segments: [{ startSec: 0, endSec: 4, text: 'Deploy Friday' }] }, slides: [] }],
+      { noteMode: 'meeting' }
+    );
+    assert.match(meetingMsgs[0].content, /expert meeting note-taker/);
+    assert.match(meetingMsgs[0].content, /action items, owners, deadlines/);
+
+    let savedLecturePatch = null;
+    let savedNotes = null;
+    await runLecturePipeline({
+      lectureId: 'lec_code',
+      noteMode: 'code',
+      deps: {
+        getLecture: async () => ({ id: 'lec_code', title: 'TS', audioSegments: [{ filename: 'audio/000.webm', offsetSec: 0 }] }),
+        getSettings: async () => ({}),
+        upsertLecture: async (patch) => {
+          savedLecturePatch = { ...savedLecturePatch, ...patch };
+          return savedLecturePatch;
+        },
+        readLectureJson: async (_id, name) => (name === 'transcript.json' ? { segments: [{ startSec: 0, endSec: 3, text: 'const x = 1' }], fullText: 'const x = 1', sttCostUsd: 0 } : null),
+        writeLectureJson: async (_id, _name, data) => {
+          savedNotes = data;
+        },
+        listDirFiles: async () => [],
+        readLectureFile: async () => new Blob(['v']),
+        extractSlidesFromVideo: async () => [],
+        generateStructuredNotes: async ({ messages }) => {
+          assert.match(messages[0].content, /"codeBlocks"/);
+          return {
+            notes: { summary: 'Used `const`.', chapters: [{ title: 'Vars', startSec: 0, endSec: 3, bullets: [], formulas: [], codeBlocks: [{ language: 'ts', code: 'const x = 1;' }], slideRefs: [] }], definitions: [], examRadar: [] },
+            costUsd: 0.002,
+          };
+        },
+      },
+    });
+    assert.equal(savedNotes.noteMode, 'code');
+    assert.equal(savedLecturePatch.noteMode, 'code');
+  });
 });

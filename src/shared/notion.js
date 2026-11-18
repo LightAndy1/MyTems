@@ -1,3 +1,4 @@
+import { resolveNoteMode } from './constants.js';
 import { formatTimestamp } from './sanitize.js';
 
 function formatCue(sec, partIndex, isMultiPart) {
@@ -19,6 +20,20 @@ function formatNotionFormula(formula) {
   return `$$${inner}$$`;
 }
 
+function formatNotionCodeBlock(block) {
+  const rawCode = typeof block === 'string' ? block : block?.code;
+  const trimmed = String(rawCode || '').replace(/^\n+|\n+$/g, '');
+  if (!trimmed.trim()) return '';
+  const fenceMatch = trimmed.match(/^`{3,}([a-zA-Z0-9_+-]*)\n([\s\S]*?)\n`{3,}$/);
+  const code = fenceMatch ? fenceMatch[2] : trimmed;
+  const rawLang = typeof block === 'object' ? block?.language : '';
+  const lang = String(rawLang || fenceMatch?.[1] || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_+-]/g, '');
+  const fence = code.includes('```') ? '````' : '```';
+  return `${fence}${lang}\n${code}\n${fence}`;
+}
+
 /**
  * Serialize final AI-processed lecture or multi-part lesson notes into Notion-ready Markdown.
  * @param {object} lecture
@@ -31,6 +46,8 @@ export function notesToNotionMarkdown(lecture, notes, slideEntries = []) {
     throw new Error('Notion export requires final AI-processed notes.');
   }
   const lec = lecture || {};
+  const mode = resolveNoteMode(notes.noteMode ?? lec.noteMode);
+  const isMeeting = mode === 'meeting';
   const isMultiPart = Boolean(notes.isMultiPart || (Array.isArray(notes.partsMeta) && notes.partsMeta.length > 1));
   const lines = [`# ${lec.title || 'Teams Lecture'}`];
   const meta = [];
@@ -45,7 +62,8 @@ export function notesToNotionMarkdown(lecture, notes, slideEntries = []) {
   }
 
   if (Array.isArray(notes.examRadar) && notes.examRadar.length > 0) {
-    lines.push('', '> [!IMPORTANT] Exam & Deadline Radar');
+    const radarTitle = isMeeting ? 'Action Items & Deadlines' : 'Exam & Deadline Radar';
+    lines.push('', `> [!IMPORTANT] ${radarTitle}`);
     for (const item of notes.examRadar) {
       const tag = String(item.type || 'note').toUpperCase();
       const due = item.dueDate ? ` (Due: ${item.dueDate})` : '';
@@ -63,6 +81,10 @@ export function notesToNotionMarkdown(lecture, notes, slideEntries = []) {
       const eq = formatNotionFormula(f);
       if (eq) lines.push('', eq);
     }
+    for (const cb of ch.codeBlocks || []) {
+      const block = formatNotionCodeBlock(cb);
+      if (block) lines.push('', block);
+    }
     for (const refIdx of ch.slideRefs || []) {
       const path = resolveSlidePath(slideEntries[refIdx]);
       if (path) lines.push('', `![](${path})`);
@@ -70,7 +92,7 @@ export function notesToNotionMarkdown(lecture, notes, slideEntries = []) {
   }
 
   if (Array.isArray(notes.definitions) && notes.definitions.length > 0) {
-    lines.push('', '## Key Definitions');
+    lines.push('', isMeeting ? '## Key Decisions & Terms' : '## Key Definitions');
     for (const d of notes.definitions) {
       const cue = formatCue(d.timestampSec, d.partIndex, isMultiPart);
       lines.push(`- **${d.term}** (\`${cue}\`): ${d.definition}`);

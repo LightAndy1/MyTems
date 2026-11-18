@@ -1,3 +1,4 @@
+import { resolveNoteMode } from '../shared/constants.js';
 import { buildTranscriptTailPrompt, formatTimestamp } from '../shared/sanitize.js';
 import { getLecture, getSettings, upsertLecture } from '../shared/storage.js';
 import {
@@ -66,12 +67,68 @@ export function mergeTranscriptSegments(chunkResults) {
   };
 }
 
-const SHARED_NOTE_RULES = [
-  "Write notes in natural, idiomatic, grammatically correct academic language matching the lecture's primary spoken language (Romanian or English), preserving English technical terms verbatim.",
-  'The Whisper STT transcript may contain garbled inflections, broken grammar, or phonetically misheard technical/mathematical terms (due to ASR errors or non-native accents); rewrite into clean academic prose and NEVER copy awkward or garbled STT phrasing.',
-  'Use slide/whiteboard images and course context to fix transcript errors, but independently verify all mathematical/technical derivations: if the board or speaker contains an algebraic, sign, or factual slip, keep the intended theorem/concept, show the correct step (with a brief note in the lecture\'s language flagging the board error), and preserve variable domains (e.g., $n \\in \\mathbb{N}^*$, $n \\ge 2$).',
-  'Format math cleanly: put raw LaTeX (no $ wrappers or backticks) inside "formulas". For "summary", "chapters[].title", "bullets", "definitions", and "examRadar[].text", wrap ALL mathematical expressions—including variables, $P(k)$, subscripts/superscripts, roots, trig terms, and inequalities—in $...$ LaTeX (never use raw ^/_ outside $...$ or Unicode math like ², √, ≤).',
-];
+const BASE_STT_CLEANUP_RULE =
+  'The Whisper STT transcript may contain garbled inflections, broken grammar, or phonetically misheard technical terms (due to ASR errors or non-native accents); rewrite into clean prose and NEVER copy awkward or garbled STT phrasing.';
+
+const MODE_NOTE_CONFIG = {
+  math: {
+    singleRole: 'You are an expert university lecture note-taker.',
+    multiRole: 'You are an expert university lecture note-taker synthesizing a multi-part lecture from the same class.',
+    rules: [
+      "Write notes in natural, idiomatic, grammatically correct academic language matching the lecture's primary spoken language (Romanian or English), preserving English technical terms verbatim.",
+      BASE_STT_CLEANUP_RULE,
+      'Use slide/whiteboard images and course context to fix transcript errors, but independently verify all mathematical/technical derivations: if the board or speaker contains an algebraic, sign, or factual slip, keep the intended theorem/concept, show the correct step (with a brief note in the lecture\'s language flagging the board error), and preserve variable domains (e.g., $n \\in \\mathbb{N}^*$, $n \\ge 2$).',
+      'Format math cleanly: put raw LaTeX (no $ wrappers or backticks) inside "formulas". For "summary", "chapters[].title", "bullets", "definitions", and "examRadar[].text", wrap ALL mathematical expressions—including variables, $P(k)$, subscripts/superscripts, roots, trig terms, and inequalities—in $...$ LaTeX (never use raw ^/_ outside $...$ or Unicode math like ², √, ≤).',
+      'Only extract "definitions" when a concept/method is explicitly defined, using its accurate timestamp.',
+      'For "examRadar", include only concrete homework, deadlines, submission rules, or explicit exam/grading hints—exclude routine live-call logistics.',
+    ],
+    chapterExtraSchema: '"formulas": string[]',
+  },
+  code: {
+    singleRole: 'You are an expert programming and computer science lecture note-taker.',
+    multiRole: 'You are an expert programming and computer science lecture note-taker synthesizing a multi-part coding lesson from the same class.',
+    rules: [
+      "Write notes in clear, idiomatic technical language matching the lecture's primary spoken language (Romanian or English), preserving English programming terms, APIs, and identifiers verbatim.",
+      BASE_STT_CLEANUP_RULE,
+      'Use slide/screen-share images and course context to recover exact code syntax, identifiers, types, file paths, and CLI commands; fix obvious spoken/STT typos in code when clearly identifiable from the slides or language syntax, without inventing unmentioned code.',
+      'Format code cleanly: NEVER wrap code, variable names, function/class names, types, CLI flags, commands, or file paths in $...$ or $$...$$ LaTeX/KaTeX. Use inline Markdown backticks (`code`) inside prose ("summary", "chapters[].title", "bullets", "definitions", "examRadar[].text"), and put multi-line code snippets, commands, or config examples into "codeBlocks" as { "language": string, "code": string } (lowercase language tag like "js", "ts", "py", "cpp", "bash", "sql", or "text"; raw code without ``` fences). Leave "formulas" empty ([]) unless there is genuine mathematical notation (e.g., Big-O $O(n \\log n)$ or equations).',
+      'Only extract "definitions" when a programming concept, API, or pattern is explicitly explained, using its accurate timestamp.',
+      'For "examRadar", include only concrete homework, coding labs, deadlines, submission rules, or explicit exam/grading hints—exclude routine live-call logistics.',
+    ],
+    chapterExtraSchema: '"formulas": string[], "codeBlocks": [{ "language": string, "code": string }]',
+  },
+  meeting: {
+    singleRole: 'You are an expert meeting note-taker.',
+    multiRole: 'You are an expert meeting note-taker synthesizing a multi-part meeting.',
+    rules: [
+      "Write concise, clear professional notes (not academic lecture prose) matching the meeting's primary spoken language (Romanian or English), preserving English technical, product, and project terms verbatim.",
+      BASE_STT_CLEANUP_RULE,
+      'Use shared screen/slide images and context to clarify discussed deliverables, names, metrics, and technical terms.',
+      'Format cleanly: NEVER wrap code, identifiers, URLs, flags, or commands in $...$ LaTeX/KaTeX—use inline Markdown backticks (`code`). Put any multi-line code, config, or command snippets into "codeBlocks": [{ "language": string, "code": string }] (raw code without ``` fences), and leave "formulas" empty ([]) unless real mathematical equations are discussed.',
+      'Use "definitions" only for key decisions, agreed definitions, or resolved questions, with accurate timestamps.',
+      'Use "examRadar" for concrete action items, owners, deadlines, or follow-up commitments—exclude routine call logistics (greetings, mic/audio checks).',
+    ],
+    chapterExtraSchema: '"formulas": string[], "codeBlocks": [{ "language": string, "code": string }]',
+  },
+};
+
+function buildModeSystemPrompt(noteMode, isMultiPart) {
+  const cfg = MODE_NOTE_CONFIG[resolveNoteMode(noteMode)];
+  const role = isMultiPart ? cfg.multiRole : cfg.singleRole;
+  const partField = isMultiPart ? ' "partIndex": number,' : '';
+  const chapterTimingRule = isMultiPart
+    ? 'Ensure chapter "startSec"/"endSec" span the full topic within each part through its wrap-up.'
+    : 'Ensure chapter "startSec"/"endSec" span the full topic through its final wrap-up.';
+  const schema = `Return ONLY valid JSON matching: { "summary": string, "chapters": [{ "title": string,${partField} "startSec": number, "endSec": number, "bullets": string[], ${cfg.chapterExtraSchema}, "slideRefs": number[] }], "definitions": [{ "term": string, "definition": string,${partField} "timestampSec": number }], "examRadar": [{ "type": "exam_hint"|"deadline"|"homework", "text": string,${partField} "timestampSec": number, "dueDate": string|null }] }.`;
+  return [
+    role,
+    ...(isMultiPart ? ['Connect topics across parts coherently without repeating the intro.'] : []),
+    ...cfg.rules,
+    chapterTimingRule,
+    schema,
+    ...(isMultiPart ? ['Use 1-based partIndex matching the transcript part where each item appears.'] : []),
+  ].join(' ');
+}
 
 function trimAtWordEnd(text, maxChars) {
   const clean = String(text || '').trim().replace(/\s+/g, ' ');
@@ -105,7 +162,7 @@ export function buildSttChunkPrompt(domainPrefix, prevChunkText = '', maxChars =
 /**
  * Build OpenAI-compatible vision chat messages combining transcript and slide frames.
  */
-export function buildVisionMessages(transcript, slidePayloads, courseHint = '') {
+export function buildVisionMessages(transcript, slidePayloads, courseHint = '', noteMode = 'math') {
   const transcriptLines = transcript.segments
     .map((s) => `[${formatTimestamp(s.startSec)} | ${Math.floor(s.startSec)}s] ${s.text}`)
     .join('\n');
@@ -114,14 +171,7 @@ export function buildVisionMessages(transcript, slidePayloads, courseHint = '') 
     .map((s, idx) => `Slide #${idx} @ ${formatTimestamp(s.timestampSec)} (${Math.floor(s.timestampSec)}s)`)
     .join('\n');
 
-  const system = [
-    'You are an expert university lecture note-taker.',
-    ...SHARED_NOTE_RULES,
-    'Ensure chapter "startSec"/"endSec" span the full topic through its final wrap-up.',
-    'Only extract "definitions" when a concept/method is explicitly defined, using its accurate timestamp.',
-    'For "examRadar", include only concrete homework, deadlines, submission rules, or explicit exam/grading hints—exclude routine live-call logistics.',
-    'Return ONLY valid JSON matching: { "summary": string, "chapters": [{ "title": string, "startSec": number, "endSec": number, "bullets": string[], "formulas": string[], "slideRefs": number[] }], "definitions": [{ "term": string, "definition": string, "timestampSec": number }], "examRadar": [{ "type": "exam_hint"|"deadline"|"homework", "text": string, "timestampSec": number, "dueDate": string|null }] }.',
-  ].join(' ');
+  const system = buildModeSystemPrompt(noteMode, false);
 
   const userContent = [
     {
@@ -315,6 +365,7 @@ export async function runTranscriptionOnly({
 export async function runLecturePipeline({
   lectureId,
   courseHint,
+  noteMode,
   onStage = () => {},
   deps = DEFAULT_DEPS,
 }) {
@@ -325,6 +376,7 @@ export async function runLecturePipeline({
   ]);
   if (!lecture) throw new Error(`Lecture ${lectureId} not found`);
   const activeHint = (courseHint ?? lecture.courseHint ?? settings.defaultCourseHint ?? '').trim();
+  const activeMode = resolveNoteMode(noteMode ?? lecture.noteMode);
 
   try {
     const seedPrompt = buildSeedPrompt(lecture, activeHint);
@@ -352,7 +404,7 @@ export async function runLecturePipeline({
       slidePayloads.push({ ...s, dataUrl: await resolvedDeps.blobToDataUrl(file, mime) });
     }
 
-    const messages = buildVisionMessages(transcript, slidePayloads, activeHint);
+    const messages = buildVisionMessages(transcript, slidePayloads, activeHint, activeMode);
     const { notes: rawNotes, costUsd } = await resolvedDeps.generateStructuredNotes({ settings, messages });
     const { items: examRadar, costUsd: jevCostUsd } = await maybeCalibrateExamRadar({
       examRadar: rawNotes.examRadar,
@@ -363,6 +415,7 @@ export async function runLecturePipeline({
     const totalLlmCost = costUsd + jevCostUsd;
     const notes = {
       ...rawNotes,
+      noteMode: activeMode,
       examRadar,
       slides,
       sttCostUsd: transcript.sttCostUsd || 0,
@@ -371,7 +424,13 @@ export async function runLecturePipeline({
       generatedAt: new Date().toISOString(),
     };
     await resolvedDeps.writeLectureJson(lectureId, 'notes.json', notes);
-    await resolvedDeps.upsertLecture({ id: lectureId, status: 'ready', courseHint: activeHint, error: '' });
+    await resolvedDeps.upsertLecture({
+      id: lectureId,
+      status: 'ready',
+      courseHint: activeHint,
+      noteMode: activeMode,
+      error: '',
+    });
     return { transcript, notes, slides };
   } catch (err) {
     await resolvedDeps.upsertLecture({ id: lectureId, status: 'error', error: err?.message || String(err) });
@@ -384,7 +443,7 @@ export async function runLecturePipeline({
  */
 export function buildLessonVisionMessages(
   partsPayload,
-  { courseHint = '', subject = '', previousLessonSummary = '' } = {}
+  { courseHint = '', subject = '', previousLessonSummary = '', noteMode = 'math' } = {}
 ) {
   const transcriptSections = partsPayload.map(({ partIndex, lecture, transcript }) => {
     const header = `--- Part ${partIndex} (${lecture?.title || `Part ${partIndex}`}) ---`;
@@ -399,16 +458,7 @@ export function buildLessonVisionMessages(
     .map((s, idx) => `Slide #${idx} @ Pt ${s.partIndex} ${formatTimestamp(s.timestampSec)} (${Math.floor(s.timestampSec)}s)`)
     .join('\n');
 
-  const system = [
-    'You are an expert university lecture note-taker synthesizing a multi-part lecture from the same class.',
-    'Connect topics across parts coherently without repeating the intro.',
-    ...SHARED_NOTE_RULES,
-    'Ensure chapter "startSec"/"endSec" span the full topic within each part through its wrap-up.',
-    'Only extract "definitions" when a concept/method is explicitly defined.',
-    'For "examRadar", include only concrete homework, deadlines, submission rules, or explicit exam/grading hints—exclude routine live-call logistics.',
-    'Return ONLY valid JSON matching: { "summary": string, "chapters": [{ "title": string, "partIndex": number, "startSec": number, "endSec": number, "bullets": string[], "formulas": string[], "slideRefs": number[] }], "definitions": [{ "term": string, "definition": string, "partIndex": number, "timestampSec": number }], "examRadar": [{ "type": "exam_hint"|"deadline"|"homework", "text": string, "partIndex": number, "timestampSec": number, "dueDate": string|null }] }.',
-    'Use 1-based partIndex matching the transcript part where each item appears.',
-  ].join(' ');
+  const system = buildModeSystemPrompt(noteMode, true);
 
   const userContent = [
     {
@@ -496,6 +546,7 @@ export async function runLessonPipeline({
   lectureIds,
   subject = '',
   courseHint,
+  noteMode,
   previousLessonSummary = '',
   onStage = () => {},
   deps = DEFAULT_DEPS,
@@ -504,7 +555,7 @@ export async function runLessonPipeline({
     throw new Error('Lesson has no lecture parts.');
   }
   if (lectureIds.length === 1) {
-    const single = await runLecturePipeline({ lectureId: lectureIds[0], courseHint, onStage, deps });
+    const single = await runLecturePipeline({ lectureId: lectureIds[0], courseHint, noteMode, onStage, deps });
     return {
       notes: single.notes,
       transcriptsById: { [lectureIds[0]]: single.transcript },
@@ -568,11 +619,13 @@ export async function runLessonPipeline({
     }
 
     const activeHint = (courseHint ?? partsPayload[0]?.lecture?.courseHint ?? settings.defaultCourseHint ?? '').trim();
+    const activeMode = resolveNoteMode(noteMode ?? partsPayload[0]?.lecture?.noteMode);
     const resolvedSubject = (subject || partsPayload[0]?.lecture?.subject || '').trim();
     const messages = buildLessonVisionMessages(partsPayload, {
       courseHint: activeHint,
       subject: resolvedSubject,
       previousLessonSummary,
+      noteMode: activeMode,
     });
     const { notes: rawNotes, costUsd } = await resolvedDeps.generateStructuredNotes({ settings, messages });
 
@@ -597,6 +650,7 @@ export async function runLessonPipeline({
     const llmCostUsd = Number((costUsd + jevCostUsd).toFixed(6));
     const notes = {
       ...rawNotes,
+      noteMode: activeMode,
       chapters: (rawNotes.chapters || []).map(withPart),
       definitions: (rawNotes.definitions || []).map(withPart),
       examRadar,
@@ -616,7 +670,13 @@ export async function runLessonPipeline({
 
     await resolvedDeps.writeLessonJson(lessonId, 'notes.json', notes);
     for (const lectureId of lectureIds) {
-      await resolvedDeps.upsertLecture({ id: lectureId, status: 'ready', courseHint: activeHint, error: '' });
+      await resolvedDeps.upsertLecture({
+        id: lectureId,
+        status: 'ready',
+        courseHint: activeHint,
+        noteMode: activeMode,
+        error: '',
+      });
     }
     return { notes, transcriptsById, slides: allSlides };
   } catch (err) {

@@ -35,6 +35,16 @@ export const HINT_PRESETS = [
   },
 ];
 
+export const NOTE_MODES = [
+  { id: 'math', label: 'Math / Theory' },
+  { id: 'code', label: 'Coding / CS' },
+  { id: 'meeting', label: 'Meeting / Sync' },
+];
+
+export function resolveNoteMode(mode) {
+  return NOTE_MODES.some((m) => m.id === mode) ? mode : 'math';
+}
+
 export const WHITEBOARD_ORIGINS = [
   'https://teams.microsoft.com/*',
   'https://teams.cloud.microsoft/*',

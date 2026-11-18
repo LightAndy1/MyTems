@@ -1,4 +1,4 @@
-import { HINT_PRESETS, WHITEBOARD_ORIGINS } from '../shared/constants.js';
+import { HINT_PRESETS, NOTE_MODES, WHITEBOARD_ORIGINS, resolveNoteMode } from '../shared/constants.js';
 import {
   buildDownloadFilename,
   formatLocalDateTimeParts,
@@ -805,6 +805,16 @@ function renderStudyDesk() {
         ul.appendChild(li);
       }
       sec.append(h4, ul);
+      for (const cb of ch.codeBlocks || []) {
+        const raw = typeof cb === 'string' ? cb : cb?.code;
+        if (!String(raw || '').trim()) continue;
+        const pre = document.createElement('pre');
+        pre.className = 'chapter-code mono';
+        const code = document.createElement('code');
+        code.textContent = raw;
+        pre.appendChild(code);
+        sec.appendChild(pre);
+      }
       chaptersEl.appendChild(sec);
     }
 
@@ -878,6 +888,7 @@ async function selectLecture(id) {
   el('lecTitle').textContent = lec.title;
   el('lecSubjectInput').value = resolveLectureSubject(lec);
   el('lecCourseHint').value = lec.courseHint || '';
+  el('noteModeSelect').value = resolveNoteMode(lec.noteMode);
   syncHintPresetSelect(el('lecCourseHint').value);
   renderPartSwitcher(null);
 
@@ -933,6 +944,7 @@ async function selectLesson(lessonId, focusPartId = null) {
   el('lecTitle').textContent = lesson.title;
   el('lecSubjectInput').value = lesson.subject;
   el('lecCourseHint').value = part.courseHint || '';
+  el('noteModeSelect').value = resolveNoteMode(part.noteMode);
   syncHintPresetSelect(el('lecCourseHint').value);
   renderPartSwitcher(lesson);
 
@@ -1154,6 +1166,7 @@ el('summarizeBtn').addEventListener('click', () => {
           lectureIds: lesson.parts.map((p) => p.id),
           subject: lesson.subject,
           courseHint: el('lecCourseHint').value,
+          noteMode: el('noteModeSelect').value,
           previousLessonSummary,
           onStage: (msg) => setBanner(msg),
         });
@@ -1163,6 +1176,7 @@ el('summarizeBtn').addEventListener('click', () => {
         await runLecturePipeline({
           lectureId: targetId,
           courseHint: el('lecCourseHint').value,
+          noteMode: el('noteModeSelect').value,
           onStage: (msg) => setBanner(msg),
         });
         activeTab = 'notes';
@@ -1269,6 +1283,23 @@ function syncHintPresetSelect(hintValue) {
   const trimmed = String(hintValue || '').trim();
   const match = HINT_PRESETS.find((p) => p.hint === trimmed);
   select.value = match ? match.id : '';
+}
+
+const noteModeSelect = el('noteModeSelect');
+if (noteModeSelect) {
+  for (const mode of NOTE_MODES) {
+    const opt = document.createElement('option');
+    opt.value = mode.id;
+    opt.textContent = mode.label;
+    noteModeSelect.appendChild(opt);
+  }
+  noteModeSelect.addEventListener('change', async () => {
+    if (!selectedId) return;
+    const noteMode = resolveNoteMode(noteModeSelect.value);
+    const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
+    const ids = lesson ? lesson.parts.map((p) => p.id) : [selectedId];
+    await updateLectures(ids, { noteMode });
+  });
 }
 
 const hintPresetSelect = el('hintPresetSelect');

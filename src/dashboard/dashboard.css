@@ -1309,6 +1309,24 @@ select {
   line-height: 1.5;
 }
 
+.chapter-slides {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.chapter-slide-btn {
+  flex: initial;
+}
+
+.chapter-slide-btn img {
+  aspect-ratio: auto;
+  max-height: 280px;
+  object-fit: contain;
+  background: var(--surface);
+}
+
 .definitions {
   margin-top: 18px;
   display: flex;

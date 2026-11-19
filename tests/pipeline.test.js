@@ -827,4 +827,63 @@ describe('AI pipeline & client helpers', () => {
     assert.equal(savedNotes.multiSpeaker, true);
     assert.equal(savedPatch.multiSpeaker, true);
   });
+
+  it('builds architecture diagram-first prompts keeping drawings as slideRefs and persists noteMode', async () => {
+    const singleMsgs = buildVisionMessages(
+      { segments: [{ startSec: 10, endSec: 15, text: 'This goes into the ALU mux' }] },
+      [{ filename: '001_10_wb.png', timestampSec: 10, dataUrl: 'data:image/png;base64,AA==' }],
+      'Computer Architecture',
+      'architecture'
+    );
+    assert.match(singleMsgs[0].content, /computer systems and architecture/);
+    assert.match(singleMsgs[0].content, /primary sources of truth/);
+    assert.match(singleMsgs[0].content, /Keep graphs and drawings as images/);
+    assert.match(singleMsgs[0].content, /"slideRefs"/);
+    assert.match(singleMsgs[0].content, /"codeBlocks"/);
+    assert.match(singleMsgs[0].content, /"formulas"/);
+
+    const lessonMsgs = buildLessonVisionMessages(
+      [{ partIndex: 1, lecture: { title: 'CPU Datapath' }, transcript: { segments: [] }, slides: [{ partIndex: 1, timestampSec: 5, dataUrl: 'data:image/png;base64,AA==' }] }],
+      { noteMode: 'architecture' }
+    );
+    assert.match(lessonMsgs[0].content, /multi-part systems architecture lesson/);
+
+    let savedPatch = null;
+    let savedNotes = null;
+    await runLecturePipeline({
+      lectureId: 'lec_arch',
+      noteMode: 'architecture',
+      deps: {
+        getLecture: async () => ({ id: 'lec_arch', title: 'Pipeline Datapath', audioSegments: [{ filename: 'audio/000.webm', offsetSec: 0 }] }),
+        getSettings: async () => ({}),
+        upsertLecture: async (patch) => {
+          savedPatch = { ...savedPatch, ...patch };
+          return savedPatch;
+        },
+        readLectureJson: async (_id, name) => (name === 'transcript.json' ? { segments: [], fullText: '', sttCostUsd: 0 } : null),
+        writeLectureJson: async (_id, _name, data) => {
+          savedNotes = data;
+        },
+        listDirFiles: async (_id, dir) => (dir === 'slides' ? ['001_10_wb.png'] : []),
+        readLectureFile: async () => new Blob(['img']),
+        extractSlidesFromVideo: async () => [],
+        blobToDataUrl: async () => 'data:image/png;base64,AA==',
+        generateStructuredNotes: async ({ messages }) => {
+          assert.equal(messages[1].content[1].type, 'image_url');
+          return {
+            notes: {
+              summary: '5-stage `IF`/`ID`/`EX`/`MEM`/`WB` datapath.',
+              chapters: [{ title: 'Datapath', startSec: 0, endSec: 30, bullets: ['`ALU` reads `RS1` and `RS2`.'], formulas: ['S = \\frac{1}{(1-f) + f/k}'], codeBlocks: [{ language: 'asm', code: 'ADD R1, R2, R3' }], slideRefs: [0] }],
+              definitions: [],
+              examRadar: [],
+            },
+            costUsd: 0.002,
+          };
+        },
+      },
+    });
+    assert.equal(savedNotes.noteMode, 'architecture');
+    assert.equal(savedPatch.noteMode, 'architecture');
+    assert.deepEqual(savedNotes.chapters[0].slideRefs, [0]);
+  });
 });

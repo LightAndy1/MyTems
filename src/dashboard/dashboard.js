@@ -538,11 +538,12 @@ async function renderSlidesForParts(parts, seq = selectSeq) {
       img.src = url;
       img.alt = showPartBadge ? `Pt ${i + 1} slide at ${formatTimestamp(sec)}` : `Slide at ${formatTimestamp(sec)}`;
       const label = document.createElement('span');
-      label.textContent = showPartBadge ? `Pt ${i + 1} · ${formatTimestamp(sec)}` : formatTimestamp(sec);
+      const labelText = showPartBadge ? `Pt ${i + 1} · ${formatTimestamp(sec)}` : formatTimestamp(sec);
+      label.textContent = labelText;
       btn.append(img, label);
       btn.addEventListener('click', () => seekTo(sec, part.id));
       grid.appendChild(btn);
-      slideEntries.push({ partId: part.id, partIndex: i + 1, sec, btn });
+      slideEntries.push({ partId: part.id, partIndex: i + 1, sec, url, label: labelText, btn });
       totalCount += 1;
     }
   }
@@ -874,6 +875,31 @@ function renderStudyDesk(parts = null, seq = selectSeq) {
         code.textContent = raw;
         pre.appendChild(code);
         sec.appendChild(pre);
+      }
+      const seenRefs = new Set();
+      const refFigures = [];
+      for (const refIdx of ch.slideRefs || []) {
+        if (!Number.isInteger(refIdx) || seenRefs.has(refIdx)) continue;
+        const entry = slideEntries[refIdx];
+        if (!entry) continue;
+        seenRefs.add(refIdx);
+        const figBtn = document.createElement('button');
+        figBtn.type = 'button';
+        figBtn.className = 'slide-thumb chapter-slide-btn';
+        const img = document.createElement('img');
+        img.src = entry.url;
+        img.alt = `Diagram at ${entry.label}`;
+        const cap = document.createElement('span');
+        cap.textContent = entry.label;
+        figBtn.append(img, cap);
+        figBtn.addEventListener('click', () => seekTo(entry.sec, entry.partId));
+        refFigures.push(figBtn);
+      }
+      if (refFigures.length) {
+        const slidesWrap = document.createElement('div');
+        slidesWrap.className = 'chapter-slides';
+        slidesWrap.append(...refFigures);
+        sec.appendChild(slidesWrap);
       }
       chaptersEl.appendChild(sec);
     }
@@ -1260,6 +1286,7 @@ el('snapSlideBtn').addEventListener('click', async () => {
     if (selectedId === targetId) {
       const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
       await renderSlidesForParts(lesson ? lesson.parts : [await getLecture(targetId)]);
+      renderStudyDesk();
     }
   } catch (err) {
     setBanner(err?.message || String(err), true);
@@ -1283,6 +1310,7 @@ el('attachImagesInput').addEventListener('change', async (e) => {
     if (selectedId === targetId) {
       const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
       await renderSlidesForParts(lesson ? lesson.parts : [await getLecture(targetId)]);
+      renderStudyDesk();
     }
   } catch (err) {
     setBanner(err?.message || String(err), true);

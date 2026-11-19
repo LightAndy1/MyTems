@@ -100,6 +100,20 @@ const MODE_NOTE_CONFIG = {
     ],
     chapterExtraSchema: '"formulas": string[], "codeBlocks": [{ "language": string, "code": string }]',
   },
+  architecture: {
+    singleRole: 'You are an expert computer systems and architecture lecture note-taker.',
+    multiRole: 'You are an expert computer systems and architecture lecture note-taker synthesizing a multi-part systems architecture lesson from the same class.',
+    rules: [
+      "Write clear, idiomatic technical notes matching the lecture's primary spoken language (Romanian or English), preserving English hardware/architecture terms, signal/bus/register names, and instruction mnemonics verbatim.",
+      BASE_STT_CLEANUP_RULE,
+      'Treat slide, whiteboard, and drawing images (block diagrams, datapaths, pipelines, cache/memory hierarchies, buses, logic circuits, FSMs, timing waveforms, and graphs) as primary sources of truth—especially when the speaker refers deictically ("this block", "here", "this arrow") or draws without reading every label aloud, or when speech is sparse.',
+      'Keep graphs and drawings as images instead of redrawing them as ASCII text: attach every relevant diagram image to its chapter via "slideRefs" (0-based index), and in bullets explain the visual structure—components/blocks, directed signal/data flow, control lines, bit-widths, graph axes/trends, and state transitions—without inventing unshown labels.',
+      'Format notation cleanly: NEVER wrap register names, pin/signal names, bus names, assembly instructions, hex/binary literals, or HDL identifiers in $...$ LaTeX/KaTeX—use inline Markdown backticks (`PC`, `ALU`, `0xFF`, `ADD R1, R2, R3`). Put multi-line assembly, Verilog/VHDL, or RTL snippets into "codeBlocks" as { "language": string, "code": string } (raw code without ``` fences) only when code/RTL is shown. Put genuine quantitative, Boolean, bit-field, timing, or speedup/CPI equations as raw LaTeX in "formulas" and $...$ in prose.',
+      'Only extract "definitions" when an architectural component, protocol, signal, or concept is explicitly defined, using its accurate timestamp.',
+      'For "examRadar", include only concrete homework, labs, deadlines, submission rules, or explicit exam/grading hints—exclude routine live-call logistics.',
+    ],
+    chapterExtraSchema: '"formulas": string[], "codeBlocks": [{ "language": string, "code": string }]',
+  },
   meeting: {
     singleRole: 'You are an expert meeting note-taker.',
     multiRole: 'You are an expert meeting note-taker synthesizing a multi-part meeting.',

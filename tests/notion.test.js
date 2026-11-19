@@ -101,4 +101,31 @@ describe('notesToNotionMarkdown', () => {
     assert.match(meetingMd, /## Key Decisions & Terms/);
     assert.match(meetingMd, /```bash\ncurl -I \/v2\/health\n```/);
   });
+
+  it('exports architecture mode diagram images alongside assembly blocks and formulas', () => {
+    const archMd = notesToNotionMarkdown(
+      { title: 'CPU Pipeline', noteMode: 'architecture' },
+      {
+        noteMode: 'architecture',
+        summary: '5-stage `IF`/`ID`/`EX`/`MEM`/`WB` pipeline.',
+        chapters: [
+          {
+            title: 'Hazard Unit',
+            startSec: 15,
+            endSec: 180,
+            bullets: ['Forwarding mux selects `ALU` output from `EX/MEM`.'],
+            formulas: ['CPI = 1 + stall\\_cycles'],
+            codeBlocks: [{ language: 'asm', code: 'ADD R1, R2, R3\nSUB R4, R1, R5' }],
+            slideRefs: [0],
+          },
+        ],
+        definitions: [{ term: 'Forwarding', definition: 'Bypass path from EX/MEM to ALU input', timestampSec: 65 }],
+        examRadar: [],
+      },
+      ['001_20_wb.png']
+    );
+    assert.match(archMd, /\$\$CPI = 1 \+ stall\\_cycles\$\$/);
+    assert.match(archMd, /```asm\nADD R1, R2, R3\nSUB R4, R1, R5\n```/);
+    assert.match(archMd, /!\[\]\(slides\/001_20_wb\.png\)/);
+  });
 });

@@ -39,6 +39,7 @@ export const HINT_PRESETS = [
 export const NOTE_MODES = [
   { id: 'math', label: 'Math / Theory' },
   { id: 'code', label: 'Coding / CS' },
+  { id: 'architecture', label: 'Architecture / Diagrams' },
   { id: 'meeting', label: 'Meeting / Sync' },
 ];
 

@@ -114,11 +114,15 @@ export async function transcribeAudioSegment({ settings, blob, filename, prompt 
   const json = await res.json();
   const segments =
     Array.isArray(json.segments) && json.segments.length
-      ? json.segments.map((s) => ({
-          startSec: Number(s.start ?? 0),
-          endSec: Number(s.end ?? s.start ?? 0),
-          text: String(s.text || '').trim(),
-        }))
+      ? json.segments.map((s) => {
+          const speaker = String(s.speaker ?? s.speaker_id ?? '').trim();
+          return {
+            startSec: Number(s.start ?? 0),
+            endSec: Number(s.end ?? s.start ?? 0),
+            text: String(s.text || '').trim(),
+            ...(speaker ? { speaker } : {}),
+          };
+        })
       : [{ startSec: 0, endSec: Number(json.usage?.seconds || 0), text: String(json.text || '').trim() }];
 
   return {

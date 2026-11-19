@@ -741,4 +741,90 @@ describe('AI pipeline & client helpers', () => {
     assert.equal(savedNotes.noteMode, 'code');
     assert.equal(savedLecturePatch.noteMode, 'code');
   });
+
+  it('preserves optional speaker labels across STT parsing, chunk merge, and vision prompts', async () => {
+    const mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          language: 'en',
+          segments: [
+            { start: 0, end: 2, text: 'Hi team', speaker: 'SPEAKER_00' },
+            { start: 2, end: 4, text: 'Morning', speaker_id: 'SPEAKER_01' },
+            { start: 4, end: 5, text: 'Ok' },
+          ],
+        }),
+        { status: 200 }
+      );
+
+    const parsed = await transcribeAudioSegment({
+      settings: { providerMode: 'local', localSttUrl: 'http://localhost:8080/v1/audio/transcriptions', localSttModel: 'whisperx' },
+      blob: new Blob(['a']),
+      filename: 'part_000.webm',
+      fetchImpl: mockFetch,
+    });
+    assert.deepEqual(parsed.segments, [
+      { startSec: 0, endSec: 2, text: 'Hi team', speaker: 'SPEAKER_00' },
+      { startSec: 2, endSec: 4, text: 'Morning', speaker: 'SPEAKER_01' },
+      { startSec: 4, endSec: 5, text: 'Ok' },
+    ]);
+
+    const merged = mergeTranscriptSegments([{ offsetSec: 600, result: parsed }]);
+    assert.equal(merged.segments[0].speaker, 'SPEAKER_00');
+    assert.equal(merged.segments[0].startSec, 600);
+    assert.equal('speaker' in merged.segments[2], false);
+
+    const singleMsgs = buildVisionMessages(merged, [], '', 'meeting');
+    assert.match(singleMsgs[0].content, /preserve speaker attribution/);
+    assert.match(singleMsgs[1].content[0].text, /\[10:00 \| 600s\] SPEAKER_00: Hi team/);
+    assert.match(singleMsgs[1].content[0].text, /\[10:04 \| 604s\] Ok/);
+
+    const lessonMsgs = buildLessonVisionMessages(
+      [{ partIndex: 1, lecture: { title: 'Standup' }, transcript: merged, slides: [] }],
+      { noteMode: 'meeting' }
+    );
+    assert.match(lessonMsgs[1].content[0].text, /\[Pt 1 · 10:00 \| partIndex=1 \| 600s\] SPEAKER_00: Hi team/);
+  });
+
+  it('adds multi-speaker prompt instruction only when multiSpeaker is enabled and persists it', async () => {
+    const segs = { segments: [{ startSec: 0, endSec: 3, text: 'Let us ship Friday' }] };
+    const offMsgs = buildVisionMessages(segs, [], '', 'meeting', false);
+    const onMsgs = buildVisionMessages(segs, [], '', 'meeting', true);
+    assert.ok(!offMsgs[0].content.includes('transcript includes multiple speakers'));
+    assert.match(onMsgs[0].content, /transcript includes multiple speakers/);
+
+    const lessonOn = buildLessonVisionMessages(
+      [{ partIndex: 1, lecture: { title: 'Sync' }, transcript: segs, slides: [] }],
+      { noteMode: 'meeting', multiSpeaker: true }
+    );
+    assert.match(lessonOn[0].content, /transcript includes multiple speakers/);
+
+    let savedPatch = null;
+    let savedNotes = null;
+    await runLecturePipeline({
+      lectureId: 'lec_ms',
+      noteMode: 'meeting',
+      multiSpeaker: true,
+      deps: {
+        getLecture: async () => ({ id: 'lec_ms', title: 'Sync', audioSegments: [{ filename: 'audio/000.webm', offsetSec: 0 }] }),
+        getSettings: async () => ({}),
+        upsertLecture: async (patch) => {
+          savedPatch = { ...savedPatch, ...patch };
+          return savedPatch;
+        },
+        readLectureJson: async (_id, name) => (name === 'transcript.json' ? { ...segs, fullText: 'Let us ship Friday', sttCostUsd: 0 } : null),
+        writeLectureJson: async (_id, _name, data) => {
+          savedNotes = data;
+        },
+        listDirFiles: async () => [],
+        readLectureFile: async () => new Blob(['v']),
+        extractSlidesFromVideo: async () => [],
+        generateStructuredNotes: async ({ messages }) => {
+          assert.match(messages[0].content, /transcript includes multiple speakers/);
+          return { notes: { summary: 'Synced.', chapters: [], definitions: [], examRadar: [] }, costUsd: 0.001 };
+        },
+      },
+    });
+    assert.equal(savedNotes.multiSpeaker, true);
+    assert.equal(savedPatch.multiSpeaker, true);
+  });
 });

@@ -451,13 +451,26 @@ function renderTranscript(query = '') {
   if (!currentTranscript?.segments?.length) return;
   const q = query.trim().toLowerCase();
   const meta = selectedId ? libraryTree.partMetaById.get(selectedId) : null;
+  const speakerIdx = new Map();
   for (const seg of currentTranscript.segments) {
-    if (q && !seg.text.toLowerCase().includes(q)) continue;
+    const speaker = String(seg.speaker || '').trim();
+    if (speaker && !speakerIdx.has(speaker)) speakerIdx.set(speaker, speakerIdx.size % 6);
+    if (q && !seg.text.toLowerCase().includes(q) && !speaker.toLowerCase().includes(q)) continue;
     const row = document.createElement('div');
     row.className = 'transcript-row';
+    const body = document.createElement('div');
+    body.className = 'transcript-body';
+    if (speaker) {
+      const badge = document.createElement('span');
+      badge.className = 'speaker-tag';
+      badge.dataset.speakerIdx = String(speakerIdx.get(speaker));
+      badge.textContent = speaker;
+      body.append(badge);
+    }
     const textSpan = document.createElement('span');
     textSpan.textContent = seg.text;
-    row.append(makeTimestampBtn(seg.startSec, selectedId, meta?.partIndex), textSpan);
+    body.append(textSpan);
+    row.append(makeTimestampBtn(seg.startSec, selectedId, meta?.partIndex), body);
     container.appendChild(row);
   }
 }
@@ -889,6 +902,7 @@ async function selectLecture(id) {
   el('lecSubjectInput').value = resolveLectureSubject(lec);
   el('lecCourseHint').value = lec.courseHint || '';
   el('noteModeSelect').value = resolveNoteMode(lec.noteMode);
+  el('multiSpeakerToggle').checked = Boolean(lec.multiSpeaker);
   syncHintPresetSelect(el('lecCourseHint').value);
   renderPartSwitcher(null);
 
@@ -945,6 +959,7 @@ async function selectLesson(lessonId, focusPartId = null) {
   el('lecSubjectInput').value = lesson.subject;
   el('lecCourseHint').value = part.courseHint || '';
   el('noteModeSelect').value = resolveNoteMode(part.noteMode);
+  el('multiSpeakerToggle').checked = Boolean(part.multiSpeaker);
   syncHintPresetSelect(el('lecCourseHint').value);
   renderPartSwitcher(lesson);
 
@@ -1167,6 +1182,7 @@ el('summarizeBtn').addEventListener('click', () => {
           subject: lesson.subject,
           courseHint: el('lecCourseHint').value,
           noteMode: el('noteModeSelect').value,
+          multiSpeaker: el('multiSpeakerToggle').checked,
           previousLessonSummary,
           onStage: (msg) => setBanner(msg),
         });
@@ -1177,6 +1193,7 @@ el('summarizeBtn').addEventListener('click', () => {
           lectureId: targetId,
           courseHint: el('lecCourseHint').value,
           noteMode: el('noteModeSelect').value,
+          multiSpeaker: el('multiSpeakerToggle').checked,
           onStage: (msg) => setBanner(msg),
         });
         activeTab = 'notes';
@@ -1301,6 +1318,13 @@ if (noteModeSelect) {
     await updateLectures(ids, { noteMode });
   });
 }
+
+el('multiSpeakerToggle')?.addEventListener('change', async (e) => {
+  if (!selectedId) return;
+  const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
+  const ids = lesson ? lesson.parts.map((p) => p.id) : [selectedId];
+  await updateLectures(ids, { multiSpeaker: Boolean(e.target.checked) });
+});
 
 const hintPresetSelect = el('hintPresetSelect');
 if (hintPresetSelect) {

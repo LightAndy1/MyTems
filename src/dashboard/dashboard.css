@@ -916,6 +916,20 @@ select {
   cursor: pointer;
 }
 
+.inline-check {
+  cursor: pointer;
+  user-select: none;
+}
+
+.inline-field input[type="checkbox"] {
+  min-width: 0;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
 .inline-field.wide input {
   min-width: 220px;
 }
@@ -1290,6 +1304,55 @@ select {
 
 .transcript-row:hover {
   background: var(--surface-soft);
+}
+
+.transcript-body {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.speaker-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.speaker-tag[data-speaker-idx="1"] {
+  background: var(--mint-soft);
+  color: var(--mint-ink);
+}
+
+.speaker-tag[data-speaker-idx="2"] {
+  background: var(--cyan-soft);
+  color: var(--cyan);
+}
+
+.speaker-tag[data-speaker-idx="3"] {
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--radar-ink);
+}
+
+.speaker-tag[data-speaker-idx="4"] {
+  background: rgba(168, 85, 247, 0.14);
+  color: #7e22ce;
+}
+
+.speaker-tag[data-speaker-idx="5"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .speaker-tag[data-speaker-idx="4"] {
+    color: #d8b4fe;
+  }
 }
 
 .ts-link {

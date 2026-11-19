@@ -52,10 +52,13 @@ export function mergeTranscriptSegments(chunkResults) {
     if (result.language && result.language !== 'auto') detectedLanguage = result.language;
     sttCostUsd += Number(result.costUsd || 0);
     for (const seg of result.segments || []) {
+      const speaker = String(seg.speaker || '').trim();
       segments.push({
         startSec: Number((offsetSec + seg.startSec).toFixed(2)),
         endSec: Number((offsetSec + seg.endSec).toFixed(2)),
         text: seg.text,
+        // shortcut: per-chunk STT resets speaker IDs across 10m segments; unify via single-file local STT or cross-chunk matching if needed.
+        ...(speaker ? { speaker } : {}),
       });
     }
   }
@@ -107,12 +110,16 @@ const MODE_NOTE_CONFIG = {
       'Format cleanly: NEVER wrap code, identifiers, URLs, flags, or commands in $...$ LaTeX/KaTeX—use inline Markdown backticks (`code`). Put any multi-line code, config, or command snippets into "codeBlocks": [{ "language": string, "code": string }] (raw code without ``` fences), and leave "formulas" empty ([]) unless real mathematical equations are discussed.',
       'Use "definitions" only for key decisions, agreed definitions, or resolved questions, with accurate timestamps.',
       'Use "examRadar" for concrete action items, owners, deadlines, or follow-up commitments—exclude routine call logistics (greetings, mic/audio checks).',
+      'When transcript lines include speaker labels, preserve speaker attribution for decisions and action-item owners.',
     ],
     chapterExtraSchema: '"formulas": string[], "codeBlocks": [{ "language": string, "code": string }]',
   },
 };
 
-function buildModeSystemPrompt(noteMode, isMultiPart) {
+const MULTI_SPEAKER_PROMPT_RULE =
+  'The transcript includes multiple speakers (possibly without speaker labels); infer speaker changes from conversational turns and distinguish different viewpoints, questions vs. answers, and action-item owners without inventing unmentioned names.';
+
+function buildModeSystemPrompt(noteMode, isMultiPart, multiSpeaker = false) {
   const cfg = MODE_NOTE_CONFIG[resolveNoteMode(noteMode)];
   const role = isMultiPart ? cfg.multiRole : cfg.singleRole;
   const partField = isMultiPart ? ' "partIndex": number,' : '';
@@ -124,6 +131,7 @@ function buildModeSystemPrompt(noteMode, isMultiPart) {
     role,
     ...(isMultiPart ? ['Connect topics across parts coherently without repeating the intro.'] : []),
     ...cfg.rules,
+    ...(multiSpeaker ? [MULTI_SPEAKER_PROMPT_RULE] : []),
     chapterTimingRule,
     schema,
     ...(isMultiPart ? ['Use 1-based partIndex matching the transcript part where each item appears.'] : []),
@@ -159,19 +167,26 @@ export function buildSttChunkPrompt(domainPrefix, prevChunkText = '', maxChars =
   return tail ? `${prefix}: ${tail}` : prefix;
 }
 
+function formatTranscriptLine(seg, partIndex = null) {
+  const ts = formatTimestamp(seg.startSec);
+  const sec = Math.floor(seg.startSec);
+  const speaker = seg.speaker ? `${seg.speaker}: ` : '';
+  return partIndex == null
+    ? `[${ts} | ${sec}s] ${speaker}${seg.text}`
+    : `[Pt ${partIndex} · ${ts} | partIndex=${partIndex} | ${sec}s] ${speaker}${seg.text}`;
+}
+
 /**
  * Build OpenAI-compatible vision chat messages combining transcript and slide frames.
  */
-export function buildVisionMessages(transcript, slidePayloads, courseHint = '', noteMode = 'math') {
-  const transcriptLines = transcript.segments
-    .map((s) => `[${formatTimestamp(s.startSec)} | ${Math.floor(s.startSec)}s] ${s.text}`)
-    .join('\n');
+export function buildVisionMessages(transcript, slidePayloads, courseHint = '', noteMode = 'math', multiSpeaker = false) {
+  const transcriptLines = transcript.segments.map((s) => formatTranscriptLine(s)).join('\n');
 
   const slideIndex = slidePayloads
     .map((s, idx) => `Slide #${idx} @ ${formatTimestamp(s.timestampSec)} (${Math.floor(s.timestampSec)}s)`)
     .join('\n');
 
-  const system = buildModeSystemPrompt(noteMode, false);
+  const system = buildModeSystemPrompt(noteMode, false, multiSpeaker);
 
   const userContent = [
     {
@@ -366,6 +381,7 @@ export async function runLecturePipeline({
   lectureId,
   courseHint,
   noteMode,
+  multiSpeaker,
   onStage = () => {},
   deps = DEFAULT_DEPS,
 }) {
@@ -377,6 +393,7 @@ export async function runLecturePipeline({
   if (!lecture) throw new Error(`Lecture ${lectureId} not found`);
   const activeHint = (courseHint ?? lecture.courseHint ?? settings.defaultCourseHint ?? '').trim();
   const activeMode = resolveNoteMode(noteMode ?? lecture.noteMode);
+  const activeMultiSpeaker = Boolean(multiSpeaker ?? lecture.multiSpeaker);
 
   try {
     const seedPrompt = buildSeedPrompt(lecture, activeHint);
@@ -404,7 +421,7 @@ export async function runLecturePipeline({
       slidePayloads.push({ ...s, dataUrl: await resolvedDeps.blobToDataUrl(file, mime) });
     }
 
-    const messages = buildVisionMessages(transcript, slidePayloads, activeHint, activeMode);
+    const messages = buildVisionMessages(transcript, slidePayloads, activeHint, activeMode, activeMultiSpeaker);
     const { notes: rawNotes, costUsd } = await resolvedDeps.generateStructuredNotes({ settings, messages });
     const { items: examRadar, costUsd: jevCostUsd } = await maybeCalibrateExamRadar({
       examRadar: rawNotes.examRadar,
@@ -416,6 +433,7 @@ export async function runLecturePipeline({
     const notes = {
       ...rawNotes,
       noteMode: activeMode,
+      multiSpeaker: activeMultiSpeaker,
       examRadar,
       slides,
       sttCostUsd: transcript.sttCostUsd || 0,
@@ -429,6 +447,7 @@ export async function runLecturePipeline({
       status: 'ready',
       courseHint: activeHint,
       noteMode: activeMode,
+      multiSpeaker: activeMultiSpeaker,
       error: '',
     });
     return { transcript, notes, slides };
@@ -443,13 +462,11 @@ export async function runLecturePipeline({
  */
 export function buildLessonVisionMessages(
   partsPayload,
-  { courseHint = '', subject = '', previousLessonSummary = '', noteMode = 'math' } = {}
+  { courseHint = '', subject = '', previousLessonSummary = '', noteMode = 'math', multiSpeaker = false } = {}
 ) {
   const transcriptSections = partsPayload.map(({ partIndex, lecture, transcript }) => {
     const header = `--- Part ${partIndex} (${lecture?.title || `Part ${partIndex}`}) ---`;
-    const lines = (transcript?.segments || [])
-      .map((s) => `[Pt ${partIndex} · ${formatTimestamp(s.startSec)} | partIndex=${partIndex} | ${Math.floor(s.startSec)}s] ${s.text}`)
-      .join('\n');
+    const lines = (transcript?.segments || []).map((s) => formatTranscriptLine(s, partIndex)).join('\n');
     return `${header}\n${lines}`;
   });
 
@@ -458,7 +475,7 @@ export function buildLessonVisionMessages(
     .map((s, idx) => `Slide #${idx} @ Pt ${s.partIndex} ${formatTimestamp(s.timestampSec)} (${Math.floor(s.timestampSec)}s)`)
     .join('\n');
 
-  const system = buildModeSystemPrompt(noteMode, true);
+  const system = buildModeSystemPrompt(noteMode, true, multiSpeaker);
 
   const userContent = [
     {
@@ -547,6 +564,7 @@ export async function runLessonPipeline({
   subject = '',
   courseHint,
   noteMode,
+  multiSpeaker,
   previousLessonSummary = '',
   onStage = () => {},
   deps = DEFAULT_DEPS,
@@ -555,7 +573,7 @@ export async function runLessonPipeline({
     throw new Error('Lesson has no lecture parts.');
   }
   if (lectureIds.length === 1) {
-    const single = await runLecturePipeline({ lectureId: lectureIds[0], courseHint, noteMode, onStage, deps });
+    const single = await runLecturePipeline({ lectureId: lectureIds[0], courseHint, noteMode, multiSpeaker, onStage, deps });
     return {
       notes: single.notes,
       transcriptsById: { [lectureIds[0]]: single.transcript },
@@ -620,12 +638,14 @@ export async function runLessonPipeline({
 
     const activeHint = (courseHint ?? partsPayload[0]?.lecture?.courseHint ?? settings.defaultCourseHint ?? '').trim();
     const activeMode = resolveNoteMode(noteMode ?? partsPayload[0]?.lecture?.noteMode);
+    const activeMultiSpeaker = Boolean(multiSpeaker ?? partsPayload[0]?.lecture?.multiSpeaker);
     const resolvedSubject = (subject || partsPayload[0]?.lecture?.subject || '').trim();
     const messages = buildLessonVisionMessages(partsPayload, {
       courseHint: activeHint,
       subject: resolvedSubject,
       previousLessonSummary,
       noteMode: activeMode,
+      multiSpeaker: activeMultiSpeaker,
     });
     const { notes: rawNotes, costUsd } = await resolvedDeps.generateStructuredNotes({ settings, messages });
 
@@ -651,6 +671,7 @@ export async function runLessonPipeline({
     const notes = {
       ...rawNotes,
       noteMode: activeMode,
+      multiSpeaker: activeMultiSpeaker,
       chapters: (rawNotes.chapters || []).map(withPart),
       definitions: (rawNotes.definitions || []).map(withPart),
       examRadar,
@@ -675,6 +696,7 @@ export async function runLessonPipeline({
         status: 'ready',
         courseHint: activeHint,
         noteMode: activeMode,
+        multiSpeaker: activeMultiSpeaker,
         error: '',
       });
     }

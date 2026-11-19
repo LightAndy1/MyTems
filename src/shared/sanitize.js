@@ -36,13 +36,21 @@ export function buildDownloadFilename(
 ) {
   const lec = lecture || {};
   const { date, time } = formatLocalDateTimeParts(lec.startedAtMs || lec.createdAt);
-  if (kind === 'lesson-zip') {
+  if (kind === 'lesson-zip' || kind === 'lesson-export-zip') {
     const safeLesson = toSafeFilename(lessonTitle || lec.lessonTitle || lec.subject || lec.title);
-    return `${date}_${safeLesson}_lesson_notion.zip`;
+    const suffix = kind === 'lesson-zip' ? '_lesson_notion.zip' : '_lesson.zip';
+    return `${date}_${safeLesson}${suffix}`;
   }
   const safeTitle = toSafeFilename(lec.title);
   const partSuffix = totalParts > 1 ? `_pt${partIndex}` : '';
-  const ext = kind === 'notion-zip' ? '_notion.zip' : '.webm';
+  const extByKind = {
+    'notion-zip': '_notion.zip',
+    'export-zip': '.zip',
+    audio: '_audio.webm',
+    'audio-zip': '_audio.zip',
+    video: '.webm',
+  };
+  const ext = extByKind[kind] || '.webm';
   return `${date}_${time}_${safeTitle}${partSuffix}${ext}`;
 }
 

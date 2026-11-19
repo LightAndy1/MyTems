@@ -1,6 +1,5 @@
 import { HINT_PRESETS, NOTE_MODES, WHITEBOARD_ORIGINS, resolveNoteMode } from '../shared/constants.js';
 import {
-  buildDownloadFilename,
   formatLocalDateTimeParts,
   formatTimestamp,
   toSafeFilename,
@@ -34,7 +33,11 @@ import {
   writeLectureFile,
 } from '../shared/opfs.js';
 import { notesToNotionMarkdown } from '../shared/notion.js';
-import { buildStoreZip } from '../shared/zip.js';
+import {
+  buildExportZipPayload,
+  hasAudioOnlyMedia,
+  resolveLectureMediaDownload,
+} from '../shared/export.js';
 import { captureCurrentVideoFrame } from './slides.js';
 import {
   runLecturePipeline,
@@ -45,6 +48,7 @@ import {
 } from './pipeline.js';
 
 const el = (id) => document.getElementById(id);
+const EXPORT_DEPS = { listDirFiles, readLectureFile, readLectureJson };
 
 let libraryTree = { subjects: [], lessonsById: new Map(), partMetaById: new Map() };
 let activeStoreView = 'catalog';
@@ -331,7 +335,8 @@ function renderPartRow(lec, meta, lesson) {
   metaDiv.append(dot, document.createTextNode(`${dateLabel} · ${formatTimestamp(lec.durationSec)} · ${lec.status}`));
 
   main.append(titleDiv, metaDiv);
-  const dlBtn = makeQuickDownloadBtn('Download .webm', () => downloadLectureVideo(lec.id));
+  const dlLabel = lec.recordScreen === false ? 'Download audio' : 'Download .webm';
+  const dlBtn = makeQuickDownloadBtn(dlLabel, () => downloadLectureVideo(lec.id));
   item.append(makeDragGripSvg(), main, dlBtn);
   item.addEventListener('click', () => {
     if (lesson.isGroup) {
@@ -446,7 +451,7 @@ async function renderLectureList() {
         lMeta.textContent = `${lesson.parts.length} parts · ${formatTimestamp(lesson.totalDurationSec)}`;
         titleWrap.append(lTitle, lMeta);
 
-        const dlAllBtn = makeQuickDownloadBtn('Download all parts (.webm)', () =>
+        const dlAllBtn = makeQuickDownloadBtn('Download all parts', () =>
           downloadLecturesSequentially(lessonIds, 'video')
         );
 
@@ -546,6 +551,7 @@ async function renderSlidesForParts(parts, seq = selectSeq) {
   el('slidesEmptyHint').hidden = totalCount > 0;
   el('slidesCount').textContent = String(totalCount);
   highlightActiveSlide(el('videoPlayer').currentTime || 0);
+  syncZipButton(parts, seq);
 }
 
 function getDropStatus(parts) {
@@ -767,14 +773,27 @@ function renderPartSwitcher(lesson) {
   });
 }
 
-function renderStudyDesk() {
+async function syncZipButton(parts, seq = selectSeq) {
+  const hasQuickContent = Boolean(currentNotes || currentTranscript?.segments?.length || slideEntries.length > 0);
+  if (hasQuickContent) {
+    el('zipNotionBtn').disabled = false;
+    return;
+  }
+  el('zipNotionBtn').disabled = true;
+  if (!parts?.length) return;
+  const audioOnly = await hasAudioOnlyMedia(parts, EXPORT_DEPS);
+  if (seq === selectSeq && audioOnly) el('zipNotionBtn').disabled = false;
+}
+
+function renderStudyDesk(parts = null, seq = selectSeq) {
   const hasNotes = Boolean(currentNotes);
   const hasTranscript = Boolean(currentTranscript?.segments?.length);
   const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
   const partCount = lesson && lesson.parts.length > 1 ? lesson.parts.length : 0;
+  const activeParts = parts || lesson?.parts || (selectedId ? [{ id: selectedId }] : []);
 
   el('copyNotionBtn').disabled = !hasNotes;
-  el('zipNotionBtn').disabled = !hasNotes;
+  syncZipButton(activeParts, seq);
   el('extractSlidesBtn').textContent = partCount ? `Extract Slides (All ${partCount} Parts · $0)` : 'Extract Slides ($0)';
   el('transcribeOnlyBtn').textContent = partCount
     ? (hasTranscript ? `Re-transcribe All ${partCount} Parts ($0 LLM)` : `Transcribe All ${partCount} Parts ($0 LLM)`)
@@ -893,25 +912,38 @@ async function loadVideoPart(id, seq) {
     el('mediaFreedNote').hidden = true;
     el('snapSlideBtn').hidden = false;
     el('downloadVideoBtn').disabled = false;
+    el('downloadVideoBtn').textContent = 'Download Video (.webm)';
     el('quickDownloadBtn').disabled = false;
+    el('quickDownloadBtn').textContent = 'Download .webm';
   } catch {
     if (seq !== selectSeq) return;
     const [lec, audioFiles] = await Promise.all([getLecture(id), listDirFiles(id, 'audio')]);
     if (seq !== selectSeq) return;
-    const audioOnly = lec?.recordScreen === false && audioFiles.length > 0;
+    const hasAudio = audioFiles.length > 0;
+    const audioOnly = lec?.recordScreen === false && hasAudio;
     const noteEl = el('mediaFreedNote');
-    noteEl.querySelector('strong').textContent = audioOnly
-      ? 'Audio-only recording (screen capture was off).'
-      : 'Raw video and audio cleared from OPFS to save space.';
-    noteEl.querySelector('span').textContent = audioOnly
-      ? 'Audio segments remain saved locally for transcription and notes.'
-      : 'Notes, transcript, and extracted slides remain saved locally.';
+    if (audioOnly) {
+      noteEl.querySelector('strong').textContent = 'Audio-only recording (screen capture was off).';
+      noteEl.querySelector('span').textContent = 'Audio segments remain saved locally for transcription, notes, and download.';
+    } else if (hasAudio) {
+      noteEl.querySelector('strong').textContent = 'Audio recording saved locally.';
+      noteEl.querySelector('span').textContent = 'Video file unavailable; audio remains saved locally for transcription and download.';
+    } else {
+      noteEl.querySelector('strong').textContent = 'Raw video and audio cleared from OPFS to save space.';
+      noteEl.querySelector('span').textContent = 'Notes, transcript, and extracted slides remain saved locally.';
+    }
     player.hidden = true;
     player.removeAttribute('src');
     noteEl.hidden = false;
     el('snapSlideBtn').hidden = true;
-    el('downloadVideoBtn').disabled = true;
-    el('quickDownloadBtn').disabled = true;
+    el('downloadVideoBtn').disabled = !hasAudio;
+    el('downloadVideoBtn').textContent = hasAudio
+      ? (audioFiles.length > 1 ? 'Download Audio (.zip)' : 'Download Audio (.webm)')
+      : 'Download Video (.webm)';
+    el('quickDownloadBtn').disabled = !hasAudio;
+    el('quickDownloadBtn').textContent = hasAudio
+      ? (audioFiles.length > 1 ? 'Download Audio (.zip)' : 'Download Audio (.webm)')
+      : 'Download .webm';
   }
 }
 
@@ -968,7 +1000,7 @@ async function selectLecture(id) {
   renderTranscript(el('transcriptSearch').value);
   await renderSlidesForParts([lec], seq);
   if (seq !== selectSeq) return;
-  renderStudyDesk();
+  renderStudyDesk([lec], seq);
 }
 
 async function selectLesson(lessonId, focusPartId = null) {
@@ -1028,20 +1060,16 @@ async function selectLesson(lessonId, focusPartId = null) {
   renderTranscript(el('transcriptSearch').value);
   await renderSlidesForParts(lesson.parts, seq);
   if (seq !== selectSeq) return;
-  renderStudyDesk();
+  renderStudyDesk(lesson.parts, seq);
 }
 
 async function downloadLectureVideo(lectureId) {
   try {
-    const [lec, file] = await Promise.all([getLecture(lectureId), readLectureFile(lectureId, 'video.webm')]);
-    if (!lec) return false;
+    const lec = await getLecture(lectureId);
     const meta = libraryTree.partMetaById.get(lectureId) || { partIndex: 1, totalParts: 1 };
-    const filename = buildDownloadFilename(lec, {
-      partIndex: meta.partIndex,
-      totalParts: meta.totalParts,
-      kind: 'video',
-    });
-    triggerBlobDownload(file, filename);
+    const media = await resolveLectureMediaDownload(lectureId, lec, meta, EXPORT_DEPS);
+    if (!media) return false;
+    triggerBlobDownload(media.blob, media.filename);
     return true;
   } catch {
     return false;
@@ -1049,48 +1077,35 @@ async function downloadLectureVideo(lectureId) {
 }
 
 async function exportNotionZipForCurrent() {
-  if (!selectedId || !currentNotes) return;
+  if (!selectedId) return;
   const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
+  let payload = null;
   if (lesson && lesson.parts.length > 1) {
-    const slideEntriesMeta = [];
-    const zipEntries = [];
-    for (let i = 0; i < lesson.parts.length; i++) {
-      const part = lesson.parts[i];
-      const files = await listDirFiles(part.id, 'slides');
-      for (const f of files) {
-        const zipPath = `slides/pt${i + 1}_${f}`;
-        slideEntriesMeta.push({ partIndex: i + 1, filename: f, zipPath });
-        const file = await readLectureFile(part.id, `slides/${f}`);
-        zipEntries.push({ name: zipPath, data: new Uint8Array(await file.arrayBuffer()) });
-      }
-    }
-    const lessonMeta = {
-      title: lesson.title,
-      subject: lesson.subject,
-      createdAt: lesson.parts[0].createdAt,
+    payload = await buildExportZipPayload({
+      parts: lesson.parts,
+      isMultiPart: true,
+      lessonTitle: lesson.title,
+      lessonSubject: lesson.subject,
       courseHint: el('lecCourseHint').value.trim(),
-    };
-    const md = notesToNotionMarkdown(lessonMeta, currentNotes, slideEntriesMeta);
-    zipEntries.unshift({ name: 'notes.md', data: new TextEncoder().encode(md) });
-    const filename = buildDownloadFilename(lesson.parts[0], { kind: 'lesson-zip', lessonTitle: lesson.title });
-    triggerBlobDownload(new Blob([buildStoreZip(zipEntries)], { type: 'application/zip' }), filename);
+      notes: currentNotes,
+      deps: EXPORT_DEPS,
+    });
+  } else {
+    const lec = await getLecture(selectedId);
+    if (!lec) return;
+    const meta = libraryTree.partMetaById.get(selectedId) || { partIndex: 1, totalParts: 1 };
+    payload = await buildExportZipPayload({
+      parts: [lec],
+      notes: currentNotes,
+      partMeta: meta,
+      deps: EXPORT_DEPS,
+    });
+  }
+  if (!payload) {
+    setBanner('Nothing to export yet for this recording.', true);
     return;
   }
-
-  const [lec, slideFiles] = await Promise.all([getLecture(selectedId), listDirFiles(selectedId, 'slides')]);
-  const md = notesToNotionMarkdown(lec, currentNotes, slideFiles);
-  const entries = [{ name: 'notes.md', data: new TextEncoder().encode(md) }];
-  for (const f of slideFiles) {
-    const file = await readLectureFile(selectedId, `slides/${f}`);
-    entries.push({ name: `slides/${f}`, data: new Uint8Array(await file.arrayBuffer()) });
-  }
-  const meta = libraryTree.partMetaById.get(selectedId) || { partIndex: 1, totalParts: 1 };
-  const filename = buildDownloadFilename(lec, {
-    partIndex: meta.partIndex,
-    totalParts: meta.totalParts,
-    kind: 'notion-zip',
-  });
-  triggerBlobDownload(new Blob([buildStoreZip(entries)], { type: 'application/zip' }), filename);
+  triggerBlobDownload(new Blob([payload.zipBytes], { type: 'application/zip' }), payload.filename);
 }
 
 async function downloadLecturesSequentially(ids, kind = 'video') {
@@ -1102,26 +1117,19 @@ async function downloadLecturesSequentially(ids, kind = 'video') {
     if (kind === 'video') {
       if (await downloadLectureVideo(id)) done += 1;
     } else if (kind === 'notion-zip') {
-      const [lec, notes, slideFiles] = await Promise.all([
-        getLecture(id),
-        readLectureJson(id, 'notes.json'),
-        listDirFiles(id, 'slides'),
-      ]);
-      if (lec && notes) {
-        const md = notesToNotionMarkdown(lec, notes, slideFiles);
-        const entries = [{ name: 'notes.md', data: new TextEncoder().encode(md) }];
-        for (const f of slideFiles) {
-          const file = await readLectureFile(id, `slides/${f}`);
-          entries.push({ name: `slides/${f}`, data: new Uint8Array(await file.arrayBuffer()) });
-        }
+      const [lec, notes] = await Promise.all([getLecture(id), readLectureJson(id, 'notes.json')]);
+      if (lec) {
         const meta = libraryTree.partMetaById.get(id) || { partIndex: 1, totalParts: 1 };
-        const filename = buildDownloadFilename(lec, {
-          partIndex: meta.partIndex,
-          totalParts: meta.totalParts,
-          kind: 'notion-zip',
+        const payload = await buildExportZipPayload({
+          parts: [lec],
+          notes,
+          partMeta: meta,
+          deps: EXPORT_DEPS,
         });
-        triggerBlobDownload(new Blob([buildStoreZip(entries)], { type: 'application/zip' }), filename);
-        done += 1;
+        if (payload) {
+          triggerBlobDownload(new Blob([payload.zipBytes], { type: 'application/zip' }), payload.filename);
+          done += 1;
+        }
       }
     }
     if (i < list.length - 1) await new Promise((r) => setTimeout(r, 250));
@@ -1285,7 +1293,7 @@ async function handleQuickDownload() {
   el('storageMenu').open = false;
   if (!selectedId) return;
   const ok = await downloadLectureVideo(selectedId);
-  if (!ok) setBanner('Video file not found for this recording.', true);
+  if (!ok) setBanner('No video or audio file found for this recording.', true);
 }
 
 el('quickDownloadBtn').addEventListener('click', handleQuickDownload);
@@ -1892,7 +1900,7 @@ el('lectureList').addEventListener('contextmenu', (e) => {
     const isRecording = lec.status === 'recording';
     const label = meta?.isGroup ? `Pt ${meta.partIndex}` : lec.title;
     const items = [
-      { label: 'Download Video (.webm)', action: () => downloadLectureVideo(id) },
+      { label: lec.recordScreen === false ? 'Download Audio' : 'Download Video (.webm)', action: () => downloadLectureVideo(id) },
       { label: 'Group / Rename Lesson...', action: () => openGroupModal([id]) },
     ];
     if (meta?.isGroup) {
@@ -1946,7 +1954,7 @@ el('lectureList').addEventListener('contextmenu', (e) => {
   const ids = lesson.parts.map((p) => p.id);
   const anyRecording = lesson.parts.some((p) => p.status === 'recording');
   openLibraryContextMenu(e.clientX, e.clientY, [
-    { label: 'Download All Parts (.webm)', action: () => downloadLecturesSequentially(ids, 'video') },
+    { label: 'Download All Parts', action: () => downloadLecturesSequentially(ids, 'video') },
     { label: 'Group / Rename Lesson...', action: () => openGroupModal(ids) },
     {
       label: 'Ungroup All Parts',

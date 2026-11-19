@@ -68,6 +68,22 @@ describe('sanitize helpers', () => {
       buildDownloadFilename(lec, { kind: 'lesson-zip', lessonTitle: 'Mathematical Logic' }),
       '2026-11-17_Mathematical_Logic_lesson_notion.zip'
     );
+    assert.equal(
+      buildDownloadFilename(lec, { kind: 'audio' }),
+      '2026-11-17_14-05_Mathematical_Logic_audio.webm'
+    );
+    assert.equal(
+      buildDownloadFilename(lec, { kind: 'audio-zip' }),
+      '2026-11-17_14-05_Mathematical_Logic_audio.zip'
+    );
+    assert.equal(
+      buildDownloadFilename(lec, { kind: 'export-zip' }),
+      '2026-11-17_14-05_Mathematical_Logic.zip'
+    );
+    assert.equal(
+      buildDownloadFilename(lec, { kind: 'lesson-export-zip', lessonTitle: 'Mathematical Logic' }),
+      '2026-11-17_Mathematical_Logic_lesson.zip'
+    );
   });
 
   it('extracts trimmed tail prompt bounded by maxChars at word boundary', () => {

@@ -103,7 +103,7 @@ async function finalizeStop(result) {
   return updated;
 }
 
-async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOverride }) {
+async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOverride, recordScreen = true }) {
   const active = await getActiveSession();
   if (active) throw new Error('Recording already in progress');
   await ensureOffscreen();
@@ -112,6 +112,7 @@ async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOv
   const lectureId = createLectureId(now);
   const title = deriveLectureTitle(tabTitle);
   const startedAtMs = now.getTime();
+  const captureScreen = recordScreen !== false;
 
   await upsertLecture({
     id: lectureId,
@@ -122,15 +123,17 @@ async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOv
     lastChunkAtMs: startedAtMs,
     durationSec: 0,
     audioSegments: [],
+    recordScreen: captureScreen,
     status: 'recording',
   });
-  await setActiveSession({ lectureId, tabId, title, startedAtMs });
+  await setActiveSession({ lectureId, tabId, title, startedAtMs, recordScreen: captureScreen });
 
   try {
     const resp = await chrome.runtime.sendMessage({
       type: 'OFFSCREEN_START_CAPTURE',
       lectureId,
       streamId,
+      recordScreen: captureScreen,
     });
     if (!resp?.ok) {
       throw new Error(resp?.error || 'Capture failed');
@@ -148,7 +151,7 @@ async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOv
   }
   await updateBadge(true);
   maybeAttachWhiteboard({ tabId, tabTitle, lectureId, startedAtMs, whiteboardOverride });
-  return { lectureId, title, startedAtMs };
+  return { lectureId, title, startedAtMs, recordScreen: captureScreen };
 }
 
 async function handleStop() {

@@ -1,7 +1,12 @@
 import { RECORDING_CONFIG } from '../shared/constants.js';
 import { writeLectureFile } from '../shared/opfs.js';
 import { saveWhiteboardSlide } from '../shared/whiteboard.js';
-import { computeOffsetSec, formatSegmentFilename, pickVideoMimeType } from './segment-math.js';
+import {
+  buildTabCaptureConstraints,
+  computeOffsetSec,
+  formatSegmentFilename,
+  pickVideoMimeType,
+} from './segment-math.js';
 
 const worker = new Worker(new URL('./opfs-writer.worker.js', import.meta.url));
 let reqSeq = 0;
@@ -33,6 +38,16 @@ function callWorker(payload, transfer = []) {
 
 let session = null;
 
+function emitHeartbeat(targetSession) {
+  if (targetSession.stopping) return;
+  chrome.runtime.sendMessage({
+    type: 'CAPTURE_HEARTBEAT',
+    lectureId: targetSession.lectureId,
+    lastChunkAtMs: Date.now(),
+    audioSegments: targetSession.audioSegments,
+  }).catch(() => {});
+}
+
 function startAudioSegment(targetSession, lectureId, audioStream, startedAtMs, index) {
   const relPath = formatSegmentFilename(index);
   const offsetSec = computeOffsetSec(startedAtMs, Date.now());
@@ -46,6 +61,7 @@ function startAudioSegment(targetSession, lectureId, audioStream, startedAtMs, i
     writeChain = writeChain.then(async () => {
       const buf = await e.data.arrayBuffer();
       await callWorker({ type: 'append', lectureId, relPath, bytes: buf }, [buf]);
+      if (!targetSession.videoRecorder) emitHeartbeat(targetSession);
     });
   };
   let segment;
@@ -69,30 +85,16 @@ function startAudioSegment(targetSession, lectureId, audioStream, startedAtMs, i
   return segment;
 }
 
-async function startCapture({ lectureId, streamId }) {
+async function startCapture({ lectureId, streamId, recordScreen = true }) {
   if (session) throw new Error('Capture already active');
   let stream = null;
   let audioCtx = null;
+  const captureScreen = recordScreen !== false;
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          chromeMediaSourceId: streamId,
-          googDisableLocalEcho: false,
-        },
-      },
-      video: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          chromeMediaSourceId: streamId,
-          maxWidth: RECORDING_CONFIG.MAX_WIDTH,
-          maxHeight: RECORDING_CONFIG.MAX_HEIGHT,
-          maxFrameRate: RECORDING_CONFIG.MAX_FPS,
-        },
-      },
-    });
+    stream = await navigator.mediaDevices.getUserMedia(
+      buildTabCaptureConstraints(streamId, captureScreen)
+    );
 
     audioCtx = new AudioContext();
     const source = audioCtx.createMediaStreamSource(stream);
@@ -101,42 +103,41 @@ async function startCapture({ lectureId, streamId }) {
     const startedAtMs = Date.now();
     const audioStream = new MediaStream(stream.getAudioTracks());
 
-    const videoRecorder = new MediaRecorder(stream, {
-      mimeType: pickVideoMimeType((m) => MediaRecorder.isTypeSupported(m)),
-      videoBitsPerSecond: RECORDING_CONFIG.VIDEO_BPS,
-      audioBitsPerSecond: RECORDING_CONFIG.AUDIO_BPS,
-    });
+    let videoRecorder = null;
+    let videoStopped = Promise.resolve();
+    let newSession;
 
-    let videoChain = Promise.resolve();
-    videoRecorder.ondataavailable = (e) => {
-      if (!e.data || e.data.size === 0) return;
-      videoChain = videoChain.then(async () => {
-        const buf = await e.data.arrayBuffer();
-        await callWorker({ type: 'append', lectureId, relPath: 'video.webm', bytes: buf }, [buf]);
-        if (!newSession.stopping) {
-          chrome.runtime.sendMessage({
-            type: 'CAPTURE_HEARTBEAT',
-            lectureId,
-            lastChunkAtMs: Date.now(),
-            audioSegments: newSession.audioSegments,
-          }).catch(() => {});
-        }
+    if (captureScreen) {
+      videoRecorder = new MediaRecorder(stream, {
+        mimeType: pickVideoMimeType((m) => MediaRecorder.isTypeSupported(m)),
+        videoBitsPerSecond: RECORDING_CONFIG.VIDEO_BPS,
+        audioBitsPerSecond: RECORDING_CONFIG.AUDIO_BPS,
       });
-    };
 
-    const videoStopped = new Promise((resolve, reject) => {
-      videoRecorder.onstop = async () => {
-        try {
-          await videoChain;
-          await callWorker({ type: 'close', lectureId, relPath: 'video.webm' });
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
+      let videoChain = Promise.resolve();
+      videoRecorder.ondataavailable = (e) => {
+        if (!e.data || e.data.size === 0) return;
+        videoChain = videoChain.then(async () => {
+          const buf = await e.data.arrayBuffer();
+          await callWorker({ type: 'append', lectureId, relPath: 'video.webm', bytes: buf }, [buf]);
+          emitHeartbeat(newSession);
+        });
       };
-    });
 
-    const newSession = {
+      videoStopped = new Promise((resolve, reject) => {
+        videoRecorder.onstop = async () => {
+          try {
+            await videoChain;
+            await callWorker({ type: 'close', lectureId, relPath: 'video.webm' });
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        };
+      });
+    }
+
+    newSession = {
       lectureId,
       startedAtMs,
       stopping: false,
@@ -155,7 +156,7 @@ async function startCapture({ lectureId, streamId }) {
     session = newSession;
 
     newSession.currentAudio = startAudioSegment(newSession, lectureId, audioStream, startedAtMs, 0);
-    videoRecorder.start(RECORDING_CONFIG.TIMESLICE_MS);
+    if (videoRecorder) videoRecorder.start(RECORDING_CONFIG.TIMESLICE_MS);
 
     newSession.rolloverTimer = setInterval(() => {
       if (session !== newSession) return;
@@ -175,7 +176,7 @@ async function startCapture({ lectureId, streamId }) {
       newSession.overlapTimers.add(timer);
     }, RECORDING_CONFIG.AUDIO_SEGMENT_MS);
 
-    stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+    (stream.getVideoTracks()[0] || stream.getAudioTracks()[0])?.addEventListener('ended', () => {
       stopCapture()
         .then((res) => {
           if (res) {
@@ -192,7 +193,7 @@ async function startCapture({ lectureId, streamId }) {
       clearInterval(failed.rolloverTimer);
       for (const timer of failed.overlapTimers) clearTimeout(timer);
       failed.overlapTimers.clear();
-      if (failed.videoRecorder.state === 'recording') failed.videoRecorder.stop();
+      if (failed.videoRecorder?.state === 'recording') failed.videoRecorder.stop();
       for (const seg of failed.activeAudios) {
         if (seg.recorder.state === 'recording') seg.recorder.stop();
       }
@@ -215,7 +216,7 @@ async function stopCapture() {
   active.overlapTimers.clear();
 
   const audioSegmentsToStop = [...active.activeAudios];
-  if (active.videoRecorder.state === 'recording') active.videoRecorder.stop();
+  if (active.videoRecorder?.state === 'recording') active.videoRecorder.stop();
   for (const seg of audioSegmentsToStop) {
     if (seg.recorder.state === 'recording') seg.recorder.stop();
   }

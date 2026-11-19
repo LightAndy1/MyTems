@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildTabCaptureConstraints,
   formatSegmentFilename,
   computeOffsetSec,
   pickVideoMimeType,
@@ -27,5 +28,15 @@ describe('recorder segment helpers', () => {
       'video/webm;codecs=vp8,opus'
     );
     assert.equal(pickVideoMimeType(() => false), 'video/webm');
+  });
+
+  it('builds tab capture constraints with or without screen video', () => {
+    const withScreen = buildTabCaptureConstraints('stream-1', true);
+    assert.equal(withScreen.audio.mandatory.chromeMediaSourceId, 'stream-1');
+    assert.equal(withScreen.video.mandatory.chromeMediaSourceId, 'stream-1');
+
+    const audioOnly = buildTabCaptureConstraints('stream-2', false);
+    assert.equal(audioOnly.audio.mandatory.chromeMediaSourceId, 'stream-2');
+    assert.equal(audioOnly.video, false);
   });
 });

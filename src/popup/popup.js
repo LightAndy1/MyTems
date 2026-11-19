@@ -1,10 +1,12 @@
 import { WHITEBOARD_ORIGINS } from '../shared/constants.js';
 import { deriveLectureTitle, formatTimestamp } from '../shared/sanitize.js';
-import { getActiveSession, getSettings } from '../shared/storage.js';
+import { getActiveSession, getSettings, saveSettings } from '../shared/storage.js';
 import { shouldEnableWhiteboard } from '../shared/whiteboard.js';
 
 const tabTitleEl = document.getElementById('tabTitle');
 const courseHintEl = document.getElementById('courseHint');
+const screenToggleRowEl = document.getElementById('screenToggleRow');
+const screenCaptureCheckEl = document.getElementById('screenCaptureCheck');
 const wbToggleRowEl = document.getElementById('wbToggleRow');
 const wbCaptureCheckEl = document.getElementById('wbCaptureCheck');
 const statusDotEl = document.getElementById('statusDot');
@@ -28,9 +30,11 @@ function renderSession(session) {
   if (session) {
     tabTitleEl.textContent = session.title;
     courseHintEl.hidden = true;
+    screenToggleRowEl.hidden = true;
     wbToggleRowEl.hidden = true;
     statusDotEl.classList.add('live');
-    statusLabelEl.textContent = 'Recording locally ($0)';
+    statusLabelEl.textContent =
+      session.recordScreen === false ? 'Recording audio ($0)' : 'Recording locally ($0)';
     timerEl.hidden = false;
     toggleBtn.textContent = 'Stop Recording';
     toggleBtn.classList.add('recording');
@@ -42,6 +46,7 @@ function renderSession(session) {
   } else {
     tabTitleEl.textContent = currentTab ? deriveLectureTitle(currentTab.title) : 'No active tab';
     courseHintEl.hidden = false;
+    screenToggleRowEl.hidden = false;
     wbToggleRowEl.hidden = false;
     statusDotEl.classList.remove('live');
     statusLabelEl.textContent = 'Ready to capture tab';
@@ -58,6 +63,7 @@ async function init() {
   if (settings.defaultCourseHint && !courseHintEl.value) {
     courseHintEl.value = settings.defaultCourseHint;
   }
+  screenCaptureCheckEl.checked = settings.recordScreen !== false;
   wbCaptureCheckEl.checked = shouldEnableWhiteboard({
     mode: settings.whiteboardMode,
     tabTitle: currentTab?.title,
@@ -65,6 +71,10 @@ async function init() {
   });
   renderSession(session);
 }
+
+screenCaptureCheckEl.addEventListener('change', () => {
+  saveSettings({ recordScreen: screenCaptureCheckEl.checked }).catch(() => {});
+});
 
 toggleBtn.addEventListener('click', async () => {
   setError('');
@@ -92,6 +102,7 @@ toggleBtn.addEventListener('click', async () => {
         streamId,
         courseHint: courseHintEl.value,
         whiteboardOverride,
+        recordScreen: screenCaptureCheckEl.checked,
       });
       if (!resp?.ok) throw new Error(resp?.error || 'Failed to start recording');
       renderSession(resp.data);

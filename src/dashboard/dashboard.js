@@ -868,9 +868,19 @@ async function loadVideoPart(id, seq) {
     el('quickDownloadBtn').disabled = false;
   } catch {
     if (seq !== selectSeq) return;
+    const [lec, audioFiles] = await Promise.all([getLecture(id), listDirFiles(id, 'audio')]);
+    if (seq !== selectSeq) return;
+    const audioOnly = lec?.recordScreen === false && audioFiles.length > 0;
+    const noteEl = el('mediaFreedNote');
+    noteEl.querySelector('strong').textContent = audioOnly
+      ? 'Audio-only recording (screen capture was off).'
+      : 'Raw video and audio cleared from OPFS to save space.';
+    noteEl.querySelector('span').textContent = audioOnly
+      ? 'Audio segments remain saved locally for transcription and notes.'
+      : 'Notes, transcript, and extracted slides remain saved locally.';
     player.hidden = true;
     player.removeAttribute('src');
-    el('mediaFreedNote').hidden = false;
+    noteEl.hidden = false;
     el('snapSlideBtn').hidden = true;
     el('downloadVideoBtn').disabled = true;
     el('quickDownloadBtn').disabled = true;

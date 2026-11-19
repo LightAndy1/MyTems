@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS = {
   localLlmUrl: 'http://localhost:11434/v1/chat/completions',
   localLlmModel: 'qwen2.5vl:7b',
   defaultCourseHint: '',
+  recordScreen: true,
   whiteboardMode: 'off',
   whiteboardMeetings: '',
   jevEnabled: false,

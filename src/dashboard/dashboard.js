@@ -1305,28 +1305,62 @@ el('freeMediaBtn').addEventListener('click', async () => {
   }
 });
 
+async function deleteLecturesByIds(ids) {
+  if (!ids.length) return;
+  const deletedSet = new Set(ids);
+  const affectedLessons = new Set();
+  for (const id of ids) {
+    const meta = libraryTree.partMetaById.get(id);
+    if (meta?.lessonId) affectedLessons.add(meta.lessonId);
+    await deleteLectureDir(id);
+    await deleteLectureMeta(id);
+    checkedIds.delete(id);
+  }
+  await renderLectureList();
+  for (const lid of affectedLessons) {
+    if (!libraryTree.lessonsById.has(lid)) await deleteLessonDir(lid);
+  }
+  syncBatchBar();
+
+  const activeAffected =
+    (selectedId && deletedSet.has(selectedId)) ||
+    (activeViewMode === 'lesson' && activeLessonId && affectedLessons.has(activeLessonId));
+  if (!activeAffected) return;
+
+  const remainingLesson =
+    activeViewMode === 'lesson' && activeLessonId
+      ? libraryTree.lessonsById.get(activeLessonId)
+      : null;
+
+  if (remainingLesson?.parts.length) {
+    if (remainingLesson.isGroup) {
+      const nextFocus = focusedPartId && !deletedSet.has(focusedPartId) ? focusedPartId : null;
+      await selectLesson(remainingLesson.lessonId, nextFocus);
+    } else {
+      await selectLecture(remainingLesson.parts[0].id);
+    }
+    return;
+  }
+
+  selectSeq += 1;
+  selectedId = null;
+  focusedPartId = null;
+  activeLessonId = null;
+  currentNotes = null;
+  currentTranscript = null;
+  revokeObjectUrls();
+  el('videoPlayer').removeAttribute('src');
+  el('emptyState').hidden = false;
+  el('lectureView').hidden = true;
+}
+
 el('deleteLectureBtn').addEventListener('click', async () => {
   el('storageMenu').open = false;
   if (!selectedId) return;
   try {
     const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
     const idsToDelete = lesson ? lesson.parts.map((p) => p.id) : [selectedId];
-    selectSeq += 1;
-    selectedId = null;
-    focusedPartId = null;
-    activeLessonId = null;
-    currentNotes = null;
-    currentTranscript = null;
-    revokeObjectUrls();
-    el('videoPlayer').removeAttribute('src');
-    for (const id of idsToDelete) {
-      await deleteLectureDir(id);
-      await deleteLectureMeta(id);
-    }
-    if (lesson) await deleteLessonDir(lesson.lessonId);
-    el('emptyState').hidden = false;
-    el('lectureView').hidden = true;
-    await renderLectureList();
+    await deleteLecturesByIds(idsToDelete);
   } catch (err) {
     setBanner(err?.message || String(err), true);
   }
@@ -1488,26 +1522,11 @@ el('batchDeleteBtn').addEventListener('click', async () => {
   const ids = [...checkedIds];
   if (!ids.length) return;
   if (!confirm(`Delete ${ids.length} selected recording(s)?`)) return;
-  const affectedLessons = new Set();
-  for (const id of ids) {
-    const meta = libraryTree.partMetaById.get(id);
-    if (meta?.lessonId) affectedLessons.add(meta.lessonId);
-    await deleteLectureDir(id);
-    await deleteLectureMeta(id);
-    checkedIds.delete(id);
+  try {
+    await deleteLecturesByIds(ids);
+  } catch (err) {
+    setBanner(err?.message || String(err), true);
   }
-  await renderLectureList();
-  for (const lid of affectedLessons) {
-    if (!libraryTree.lessonsById.has(lid)) await deleteLessonDir(lid);
-  }
-  if (selectedId && ids.includes(selectedId)) {
-    selectedId = null;
-    focusedPartId = null;
-    activeLessonId = null;
-    el('emptyState').hidden = false;
-    el('lectureView').hidden = true;
-  }
-  syncBatchBar();
 });
 
 el('copyNotionBtn').addEventListener('click', async () => {
@@ -1818,6 +1837,161 @@ el('toggleRailBtn')?.addEventListener('click', (e) => {
   const hidden = el('workbenchView').classList.toggle('rail-hidden');
   e.currentTarget.textContent = hidden ? 'Show Library' : 'Hide Library';
 });
+
+function closeLibraryContextMenu() {
+  const menu = el('libraryContextMenu');
+  if (!menu) return;
+  menu.hidden = true;
+  menu.innerHTML = '';
+}
+
+function openLibraryContextMenu(x, y, items) {
+  const menu = el('libraryContextMenu');
+  if (!menu || !items.length) return;
+  menu.innerHTML = '';
+  for (const item of items) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.role = 'menuitem';
+    btn.className = `menu-item${item.danger ? ' menu-danger' : ''}`;
+    btn.textContent = item.label;
+    btn.disabled = Boolean(item.disabled);
+    btn.addEventListener('click', async () => {
+      closeLibraryContextMenu();
+      try {
+        await item.action();
+      } catch (err) {
+        setBanner(err?.message || String(err), true);
+      }
+    });
+    menu.appendChild(btn);
+  }
+  menu.hidden = false;
+  const rect = menu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
+  const top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+el('lectureList').addEventListener('contextmenu', (e) => {
+  const itemEl = e.target.closest('.lecture-item');
+  const lessonEl = itemEl ? null : e.target.closest('.lesson-header');
+  if (!itemEl && !lessonEl) {
+    closeLibraryContextMenu();
+    return;
+  }
+  e.preventDefault();
+
+  if (itemEl) {
+    const id = itemEl.dataset.lectureId;
+    const meta = libraryTree.partMetaById.get(id);
+    const lesson = meta ? libraryTree.lessonsById.get(meta.lessonId) : null;
+    const lec = lesson?.parts.find((p) => p.id === id);
+    if (!lec) return;
+    const isRecording = lec.status === 'recording';
+    const label = meta?.isGroup ? `Pt ${meta.partIndex}` : lec.title;
+    const items = [
+      { label: 'Download Video (.webm)', action: () => downloadLectureVideo(id) },
+      { label: 'Group / Rename Lesson...', action: () => openGroupModal([id]) },
+    ];
+    if (meta?.isGroup) {
+      items.push({
+        label: 'Ungroup (Make Standalone)',
+        action: async () => {
+          await updateLectures([id], (l) => ({ lessonId: `${STANDALONE_PREFIX}${l.id}`, lessonTitle: '' }));
+          if (selectedId === id) {
+            await selectLecture(id);
+          } else if (activeViewMode === 'lesson' && activeLessonId === lesson.lessonId) {
+            await renderLectureList();
+            const rem = libraryTree.lessonsById.get(lesson.lessonId);
+            if (rem?.isGroup) await selectLesson(rem.lessonId, focusedPartId);
+            else if (rem?.parts.length) await selectLecture(rem.parts[0].id);
+          } else {
+            await renderLectureList();
+          }
+        },
+      });
+    }
+    items.push(
+      {
+        label: 'Free Media Space',
+        disabled: isRecording,
+        action: async () => {
+          await freeLectureMedia(id);
+          await renderLectureList();
+          if (activeViewMode === 'lesson' && activeLessonId === lesson?.lessonId) {
+            await selectLesson(lesson.lessonId, focusedPartId);
+          } else if (selectedId === id) {
+            await selectLecture(id);
+          }
+        },
+      },
+      {
+        label: 'Delete Video',
+        danger: true,
+        disabled: isRecording,
+        action: async () => {
+          if (!confirm(`Delete "${label}"?`)) return;
+          await deleteLecturesByIds([id]);
+        },
+      }
+    );
+    openLibraryContextMenu(e.clientX, e.clientY, items);
+    return;
+  }
+
+  const lesson = libraryTree.lessonsById.get(lessonEl.dataset.lessonId);
+  if (!lesson) return;
+  const ids = lesson.parts.map((p) => p.id);
+  const anyRecording = lesson.parts.some((p) => p.status === 'recording');
+  openLibraryContextMenu(e.clientX, e.clientY, [
+    { label: 'Download All Parts (.webm)', action: () => downloadLecturesSequentially(ids, 'video') },
+    { label: 'Group / Rename Lesson...', action: () => openGroupModal(ids) },
+    {
+      label: 'Ungroup All Parts',
+      action: async () => {
+        await updateLectures(ids, (l) => ({ lessonId: `${STANDALONE_PREFIX}${l.id}`, lessonTitle: '' }));
+        if (activeViewMode === 'lesson' && activeLessonId === lesson.lessonId) {
+          await selectLecture(selectedId || ids[0]);
+        } else {
+          await renderLectureList();
+        }
+      },
+    },
+    {
+      label: 'Free Media Space (All Parts)',
+      disabled: anyRecording,
+      action: async () => {
+        for (const id of ids) await freeLectureMedia(id);
+        await renderLectureList();
+        if (activeViewMode === 'lesson' && activeLessonId === lesson.lessonId) {
+          await selectLesson(lesson.lessonId, focusedPartId);
+        } else if (selectedId && ids.includes(selectedId)) {
+          await selectLecture(selectedId);
+        }
+      },
+    },
+    {
+      label: `Delete Lesson (${ids.length} parts)`,
+      danger: true,
+      disabled: anyRecording,
+      action: async () => {
+        if (!confirm(`Delete lesson "${lesson.title}" (${ids.length} parts)?`)) return;
+        await deleteLecturesByIds(ids);
+      },
+    },
+  ]);
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#libraryContextMenu')) closeLibraryContextMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLibraryContextMenu();
+});
+el('lectureList').addEventListener('scroll', closeLibraryContextMenu);
+el('lectureList').addEventListener('dragstart', closeLibraryContextMenu);
 
 el('themeToggleBtn')?.addEventListener('click', () => {
   const current = document.documentElement.getAttribute('data-theme');

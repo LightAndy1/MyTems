@@ -107,3 +107,126 @@ export function findPreviousSubjectLesson(tree, subject, currentLessonId) {
     .sort((a, b) => lectureStartMs(b.parts[0]) - lectureStartMs(a.parts[0]));
   return earlier[0] || null;
 }
+
+/**
+ * Compute atomic lecture metadata patches for a drag-and-drop operation in the library tree.
+ * Returns null when the drop is a no-op or invalid.
+ */
+export function planLibraryDrop(tree, drag, target, nowMs = Date.now()) {
+  const dragIds = [...new Set(drag?.ids || [])].filter((id) => tree?.partMetaById?.has(id));
+  if (!dragIds.length || !target?.kind) return null;
+
+  if (target.kind === 'subject') {
+    const targetSubject = String(target.subject || '').trim();
+    if (!targetSubject) return null;
+    const targetKey = normalizeGroupKey(targetSubject);
+
+    if (drag.kind === 'lesson') {
+      const allSameSubject = dragIds.every(
+        (id) => normalizeGroupKey(tree.partMetaById.get(id)?.subject) === targetKey
+      );
+      if (allSameSubject) return null;
+      const sourceLessonId = tree.partMetaById.get(dragIds[0]).lessonId;
+      return {
+        action: 'move-lesson',
+        targetSubject,
+        changes: dragIds.map((id) => ({
+          id,
+          // Persist auto lessonId explicitly so moving subjects never merges into another subject's auto bucket.
+          patch: { subject: targetSubject, lessonId: sourceLessonId },
+        })),
+      };
+    }
+
+    const allAlreadyStandaloneInTarget = dragIds.every((id) => {
+      const meta = tree.partMetaById.get(id);
+      const lesson = meta ? tree.lessonsById.get(meta.lessonId) : null;
+      return normalizeGroupKey(meta?.subject) === targetKey && !lesson?.isGroup;
+    });
+    if (allAlreadyStandaloneInTarget) return null;
+
+    const anyWasGrouped = dragIds.some((id) => {
+      const meta = tree.partMetaById.get(id);
+      return Boolean(meta && tree.lessonsById.get(meta.lessonId)?.isGroup);
+    });
+    const allInTargetSubject = dragIds.every(
+      (id) => normalizeGroupKey(tree.partMetaById.get(id)?.subject) === targetKey
+    );
+
+    return {
+      action: allInTargetSubject && anyWasGrouped ? 'ungroup' : 'move-to-subject',
+      targetSubject,
+      changes: dragIds.map((id) => ({
+        id,
+        patch: {
+          subject: targetSubject,
+          lessonId: `${STANDALONE_PREFIX}${id}`,
+          lessonTitle: '',
+        },
+      })),
+    };
+  }
+
+  let targetLesson = null;
+  if (target.kind === 'lesson') {
+    targetLesson = tree.lessonsById.get(target.lessonId) || null;
+  } else if (target.kind === 'lecture') {
+    const meta = tree.partMetaById.get(target.lectureId);
+    targetLesson = meta ? tree.lessonsById.get(meta.lessonId) || null : null;
+  }
+  if (!targetLesson) return null;
+
+  if (targetLesson.isGroup) {
+    const targetKey = normalizeGroupKey(targetLesson.subject);
+    const allAlreadyInLesson = dragIds.every((id) => {
+      const meta = tree.partMetaById.get(id);
+      return meta?.lessonId === targetLesson.lessonId && normalizeGroupKey(meta?.subject) === targetKey;
+    });
+    if (allAlreadyInLesson) return null;
+
+    const customTitle = targetLesson.parts.find((p) => p.lessonTitle?.trim())?.lessonTitle?.trim() || '';
+    const needsNewId = targetLesson.lessonId.startsWith(STANDALONE_PREFIX);
+    const lessonId = needsNewId ? `manual:${nowMs}` : targetLesson.lessonId;
+    const idsToUpdate = needsNewId
+      ? [...new Set([...targetLesson.parts.map((p) => p.id), ...dragIds])]
+      : dragIds;
+
+    return {
+      action: 'add-to-lesson',
+      targetSubject: targetLesson.subject,
+      targetLessonTitle: targetLesson.title,
+      lessonId,
+      changes: idsToUpdate.map((id) => ({
+        id,
+        patch: {
+          subject: targetLesson.subject,
+          lessonId,
+          lessonTitle: customTitle,
+        },
+      })),
+    };
+  }
+
+  const soloTarget = targetLesson.parts[0];
+  if (!soloTarget) return null;
+  if (dragIds.length === 1 && dragIds[0] === soloTarget.id) return null;
+
+  const newLessonId = `manual:${nowMs}`;
+  const customTitle = soloTarget.lessonTitle?.trim() || '';
+  const allIds = [...new Set([soloTarget.id, ...dragIds])];
+
+  return {
+    action: 'group-lessons',
+    targetSubject: targetLesson.subject,
+    targetLessonTitle: targetLesson.title,
+    lessonId: newLessonId,
+    changes: allIds.map((id) => ({
+      id,
+      patch: {
+        subject: targetLesson.subject,
+        lessonId: newLessonId,
+        lessonTitle: customTitle,
+      },
+    })),
+  };
+}

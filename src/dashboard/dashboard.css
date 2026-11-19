@@ -589,6 +589,7 @@ select {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
   cursor: pointer;
   font-size: 12px;
@@ -726,6 +727,42 @@ select {
 .lecture-item.active {
   background: var(--accent-soft);
   border-color: var(--accent);
+}
+
+.rail-drop-hint {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.drag-grip {
+  color: var(--muted);
+  opacity: 0.3;
+  flex-shrink: 0;
+  cursor: grab;
+  transition: opacity 150ms ease;
+}
+
+.lesson-header:hover .drag-grip,
+.lecture-item:hover .drag-grip {
+  opacity: 0.85;
+}
+
+.lesson-header.is-dragging,
+.lecture-item.is-dragging {
+  opacity: 0.45;
+}
+
+.subject-header.is-drop-target,
+.lesson-header.is-drop-target,
+.lecture-item.is-drop-target {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .lecture-item-main {

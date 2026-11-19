@@ -9,6 +9,7 @@ import {
   STANDALONE_PREFIX,
   buildLibraryTree,
   findPreviousSubjectLesson,
+  planLibraryDrop,
   resolveLectureSubject,
 } from '../shared/grouping.js';
 import {
@@ -242,6 +243,26 @@ function makeQuickDownloadBtn(title, onClick) {
   return btn;
 }
 
+function makeDragGripSvg() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'drag-grip');
+  svg.setAttribute('width', '10');
+  svg.setAttribute('height', '14');
+  svg.setAttribute('viewBox', '0 0 10 14');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const cx of [3, 7]) {
+    for (const cy of [3, 7, 11]) {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', String(cx));
+      c.setAttribute('cy', String(cy));
+      c.setAttribute('r', '1.1');
+      svg.appendChild(c);
+    }
+  }
+  return svg;
+}
+
 function makeSelectCheckbox(checked, indeterminate, onChange) {
   const cb = document.createElement('input');
   cb.type = 'checkbox';
@@ -288,7 +309,10 @@ function renderPartRow(lec, meta, lesson) {
   const item = document.createElement('div');
   const highlightedPartId = activeViewMode === 'lesson' ? focusedPartId : selectedId;
   item.className = `lecture-item${lec.id === highlightedPartId ? ' active' : ''}`;
+  item.draggable = true;
   item.dataset.lectureId = lec.id;
+  item.dataset.lessonId = lesson.lessonId;
+  item.dataset.subject = lesson.subject;
 
   const main = document.createElement('div');
   main.className = 'lecture-item-main';
@@ -308,7 +332,7 @@ function renderPartRow(lec, meta, lesson) {
 
   main.append(titleDiv, metaDiv);
   const dlBtn = makeQuickDownloadBtn('Download .webm', () => downloadLectureVideo(lec.id));
-  item.append(main, dlBtn);
+  item.append(makeDragGripSvg(), main, dlBtn);
   item.addEventListener('click', () => {
     if (lesson.isGroup) {
       const isSameFocused = activeViewMode === 'lesson' && activeLessonId === lesson.lessonId && focusedPartId === lec.id;
@@ -345,11 +369,13 @@ async function renderLectureList() {
 
     const subjSec = document.createElement('section');
     subjSec.className = `subject-group${collapsedSubjects.has(subj.name) ? ' is-collapsed' : ''}`;
+    subjSec.dataset.subject = subj.name;
 
     const subjIds = matchingLessons.flatMap((l) => l.parts.map((p) => p.id));
     const subjChecked = subjIds.filter((id) => checkedIds.has(id)).length;
     const subjHeader = document.createElement('div');
     subjHeader.className = 'subject-header';
+    subjHeader.dataset.subject = subj.name;
 
     const subjCb = makeSelectCheckbox(
       subjChecked === subjIds.length && subjIds.length > 0,
@@ -389,7 +415,9 @@ async function renderLectureList() {
         const lessonChecked = lessonIds.filter((id) => checkedIds.has(id)).length;
         const lessonHeader = document.createElement('div');
         lessonHeader.className = `lesson-header${activeViewMode === 'lesson' && activeLessonId === lesson.lessonId ? ' active' : ''}`;
+        lessonHeader.draggable = true;
         lessonHeader.dataset.lessonId = lesson.lessonId;
+        lessonHeader.dataset.subject = subj.name;
 
         const lessonCb = makeSelectCheckbox(
           lessonChecked === lessonIds.length && lessonIds.length > 0,
@@ -422,7 +450,7 @@ async function renderLectureList() {
           downloadLecturesSequentially(lessonIds, 'video')
         );
 
-        lessonHeader.append(lessonCb, lessonToggle, titleWrap, dlAllBtn);
+        lessonHeader.append(lessonCb, makeDragGripSvg(), lessonToggle, titleWrap, dlAllBtn);
         lessonHeader.addEventListener('click', () => selectLesson(lesson.lessonId));
 
         const partsWrap = document.createElement('div');
@@ -1524,6 +1552,161 @@ el('tabTranscriptBtn').addEventListener('click', () => setStudyTab('transcript')
 el('videoPlayer').addEventListener('timeupdate', () => highlightActiveSlide(el('videoPlayer').currentTime || 0));
 el('lectureFilter').addEventListener('input', renderLectureList);
 el('transcriptSearch').addEventListener('input', (e) => renderTranscript(e.target.value));
+
+const DEFAULT_DROP_HINT = 'Drop on a lesson to group · Drop on a subject to move or ungroup';
+let activeDrag = null;
+let activeDragEl = null;
+let activeDropEl = null;
+
+function setDropHighlight(nextEl, hintText) {
+  if (activeDropEl && activeDropEl !== nextEl) {
+    activeDropEl.classList.remove('is-drop-target');
+  }
+  activeDropEl = nextEl || null;
+  if (activeDropEl) activeDropEl.classList.add('is-drop-target');
+  const hint = el('railDropHint');
+  if (hint) {
+    hint.textContent = hintText || DEFAULT_DROP_HINT;
+    hint.hidden = !activeDrag;
+  }
+}
+
+function clearLibraryDrag() {
+  if (activeDragEl) activeDragEl.classList.remove('is-dragging');
+  activeDrag = null;
+  activeDragEl = null;
+  setDropHighlight(null, '');
+  const hint = el('railDropHint');
+  if (hint) hint.hidden = true;
+}
+
+function resolveDropTarget(eventTarget) {
+  if (!(eventTarget instanceof Element)) return null;
+  const item = eventTarget.closest('.lecture-item');
+  if (item) {
+    const lesson = libraryTree.lessonsById.get(item.dataset.lessonId);
+    if (lesson?.isGroup) {
+      const header = item.closest('.lesson-group')?.querySelector('.lesson-header') || item;
+      return { target: { kind: 'lesson', lessonId: lesson.lessonId }, el: header };
+    }
+    return { target: { kind: 'lecture', lectureId: item.dataset.lectureId }, el: item };
+  }
+  const lessonHeader = eventTarget.closest('.lesson-header');
+  if (lessonHeader) {
+    return { target: { kind: 'lesson', lessonId: lessonHeader.dataset.lessonId }, el: lessonHeader };
+  }
+  const subjSec = eventTarget.closest('.subject-group');
+  if (subjSec) {
+    const header = subjSec.querySelector('.subject-header') || subjSec;
+    return { target: { kind: 'subject', subject: subjSec.dataset.subject }, el: header };
+  }
+  return null;
+}
+
+function formatDropHint(plan) {
+  if (!plan) return DEFAULT_DROP_HINT;
+  if (plan.action === 'move-lesson') return `Move lesson to "${plan.targetSubject}"`;
+  if (plan.action === 'move-to-subject') return `Move to "${plan.targetSubject}"`;
+  if (plan.action === 'ungroup') return `Ungroup to standalone in "${plan.targetSubject}"`;
+  if (plan.action === 'add-to-lesson') return `Add to "${plan.targetLessonTitle}"`;
+  if (plan.action === 'group-lessons') return `Group with "${plan.targetLessonTitle}"`;
+  return DEFAULT_DROP_HINT;
+}
+
+const lectureListEl = el('lectureList');
+
+lectureListEl.addEventListener('dragstart', (e) => {
+  if (!(e.target instanceof Element) || e.target.closest('button, input')) {
+    e.preventDefault();
+    return;
+  }
+  const item = e.target.closest('.lecture-item');
+  const lessonHeader = item ? null : e.target.closest('.lesson-header');
+  if (!item && !lessonHeader) return;
+
+  if (item) {
+    const lecId = item.dataset.lectureId;
+    const ids = multiSelectMode && checkedIds.has(lecId) ? [...checkedIds] : [lecId];
+    activeDrag = { kind: ids.length > 1 ? 'lectures' : 'lecture', ids };
+    activeDragEl = item;
+  } else {
+    const lesson = libraryTree.lessonsById.get(lessonHeader.dataset.lessonId);
+    const ids = lesson ? lesson.parts.map((p) => p.id) : [];
+    if (!ids.length) {
+      e.preventDefault();
+      return;
+    }
+    activeDrag = { kind: 'lesson', ids };
+    activeDragEl = lessonHeader;
+  }
+
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify(activeDrag));
+  }
+  requestAnimationFrame(() => activeDragEl?.classList.add('is-dragging'));
+  const hint = el('railDropHint');
+  if (hint) {
+    hint.textContent = DEFAULT_DROP_HINT;
+    hint.hidden = false;
+  }
+});
+
+lectureListEl.addEventListener('dragover', (e) => {
+  if (!activeDrag) return;
+  const resolved = resolveDropTarget(e.target);
+  const plan = resolved ? planLibraryDrop(libraryTree, activeDrag, resolved.target) : null;
+  if (!plan) {
+    setDropHighlight(null, DEFAULT_DROP_HINT);
+    return;
+  }
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  setDropHighlight(resolved.el, formatDropHint(plan));
+});
+
+lectureListEl.addEventListener('dragleave', (e) => {
+  if (!activeDrag) return;
+  if (e.relatedTarget instanceof Node && lectureListEl.contains(e.relatedTarget)) return;
+  setDropHighlight(null, DEFAULT_DROP_HINT);
+});
+
+lectureListEl.addEventListener('dragend', clearLibraryDrag);
+
+lectureListEl.addEventListener('drop', async (e) => {
+  if (!activeDrag) return;
+  const resolved = resolveDropTarget(e.target);
+  const plan = resolved ? planLibraryDrop(libraryTree, activeDrag, resolved.target) : null;
+  clearLibraryDrag();
+  if (!plan) return;
+  e.preventDefault();
+
+  const prevMeta = selectedId ? libraryTree.partMetaById.get(selectedId) : null;
+  const prevLessonParts = activeLessonId ? (libraryTree.lessonsById.get(activeLessonId)?.parts.length || 0) : 0;
+
+  collapsedSubjects.delete(plan.targetSubject);
+  if (plan.lessonId) collapsedLessons.delete(plan.lessonId);
+
+  const patchMap = new Map(plan.changes.map((c) => [c.id, c.patch]));
+  await updateLectures([...patchMap.keys()], (l) => patchMap.get(l.id));
+  await renderLectureList();
+
+  if (selectedId) {
+    const nextMeta = libraryTree.partMetaById.get(selectedId);
+    const nextLesson = nextMeta ? libraryTree.lessonsById.get(nextMeta.lessonId) : null;
+    const lessonChanged =
+      !prevMeta ||
+      !nextMeta ||
+      prevMeta.lessonId !== nextMeta.lessonId ||
+      prevMeta.subject !== nextMeta.subject ||
+      prevMeta.isGroup !== nextMeta.isGroup ||
+      (activeViewMode === 'lesson' && (nextLesson?.parts.length || 0) !== prevLessonParts);
+    if (lessonChanged) {
+      if (nextLesson?.isGroup) await selectLesson(nextLesson.lessonId, selectedId);
+      else await selectLecture(selectedId);
+    }
+  }
+});
 
 document.addEventListener('click', (e) => {
   const menu = el('storageMenu');

@@ -1030,6 +1030,12 @@ select {
   color: var(--danger);
 }
 
+.context-menu {
+  position: fixed;
+  right: auto;
+  z-index: 60;
+}
+
 .part-switcher {
   display: flex;
   align-items: center;

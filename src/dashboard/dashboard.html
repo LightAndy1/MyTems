@@ -209,9 +209,22 @@
 
                 <div class="slides-col">
                   <section id="slidesStrip" class="slides-strip" hidden>
-                    <div class="section-head">
-                      <h3>Slides &amp; Attachments</h3>
-                      <span id="slidesCount" class="count-label mono"></span>
+                    <div class="section-head slides-head">
+                      <div class="slides-head-left">
+                        <h3>Slides &amp; Attachments</h3>
+                        <span id="slidesCount" class="count-label mono"></span>
+                      </div>
+                      <div class="slides-toolbar">
+                        <select id="dedupeThresholdSelect" class="input input-xs" title="Duplicate filter sensitivity" aria-label="Duplicate sensitivity">
+                          <option value="0">Exact</option>
+                          <option value="0.003" selected>Near (0.3%)</option>
+                          <option value="0.01">Similar (1%)</option>
+                          <option value="0.03">Loose (3%)</option>
+                        </select>
+                        <button id="dedupeFilterBtn" class="btn btn-sm" type="button" title="Scan for duplicate or near-duplicate frames">Dedupe Filter</button>
+                        <button id="removeSelectedSlidesBtn" class="btn btn-sm btn-danger-outline" type="button" hidden>Remove Selected (0)</button>
+                        <button id="clearSlideSelectionBtn" class="btn btn-sm" type="button" hidden>Done</button>
+                      </div>
                     </div>
                     <div id="slidesGrid" class="slides-grid"></div>
                   </section>
@@ -419,6 +432,37 @@
           <button type="submit" class="btn btn-primary">Apply</button>
         </footer>
       </form>
+    </dialog>
+
+    <dialog id="slideViewerModal" class="modal slide-viewer-modal" aria-labelledby="slideViewerTitle">
+      <div class="modal-card slide-viewer-card">
+        <header class="modal-head">
+          <div class="modal-title-wrap">
+            <h3 id="slideViewerTitle">Frame</h3>
+            <span id="slideViewerMeta" class="count-label mono"></span>
+          </div>
+          <button id="closeSlideViewerBtn" type="button" class="btn btn-sm btn-icon" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </header>
+        <div class="slide-viewer-stage">
+          <img id="slideViewerImg" alt="Extracted slide or whiteboard frame" />
+        </div>
+        <footer class="modal-foot slide-viewer-foot">
+          <div class="slide-viewer-nav">
+            <button id="viewerPrevBtn" type="button" class="btn btn-sm">Prev</button>
+            <button id="viewerNextBtn" type="button" class="btn btn-sm">Next</button>
+          </div>
+          <div class="slide-viewer-actions">
+            <button id="viewerMoveLeftBtn" type="button" class="btn btn-sm" title="Move frame earlier in stack">Move Left</button>
+            <button id="viewerMoveRightBtn" type="button" class="btn btn-sm" title="Move frame later in stack">Move Right</button>
+            <button id="viewerSeekBtn" type="button" class="btn btn-sm" title="Seek video to this timestamp">Jump to Time</button>
+            <button id="viewerDeleteBtn" type="button" class="btn btn-sm btn-danger-outline" title="Remove this frame from stack">Delete Frame</button>
+          </div>
+        </footer>
+      </div>
     </dialog>
 
     <div id="libraryContextMenu" class="menu-panel context-menu" role="menu" hidden></div>

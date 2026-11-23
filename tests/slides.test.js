@@ -4,6 +4,8 @@ import {
   computeMeanPixelDiff,
   shouldCaptureSlide,
   resolveVideoDuration,
+  planSlideReorder,
+  findDuplicateSlideIndices,
 } from '../src/dashboard/slides.js';
 
 describe('slide frame diffing', () => {
@@ -52,5 +54,30 @@ describe('resolveVideoDuration', () => {
     assert.deepEqual(seeks, [1e10]);
 
     assert.equal(await resolveVideoDuration({ duration: NaN }, async () => {}, -5), 0);
+  });
+});
+
+describe('slide stack reorder and dedupe filter', () => {
+  it('plans collision-free prefix renumbering for reordered slides', () => {
+    assert.deepEqual(planSlideReorder(['002_25_wb.png', '001_10_wb.png', '003_40.jpg']), [
+      { from: '002_25_wb.png', to: '001_25_wb.png' },
+      { from: '001_10_wb.png', to: '002_10_wb.png' },
+    ]);
+  });
+
+  it('flags exact non-consecutive duplicates and near-duplicates within threshold', () => {
+    const white = new Uint8ClampedArray([255, 255, 255, 255, 255, 255, 255, 255]);
+    const nearWhite = new Uint8ClampedArray([254, 254, 254, 255, 255, 255, 255, 255]);
+    const black = new Uint8ClampedArray([0, 0, 0, 255, 0, 0, 0, 255]);
+    const dupes = findDuplicateSlideIndices(
+      [
+        { hash: 1, rgba: white },
+        { hash: 2, rgba: nearWhite }, // near-dup of frame 0
+        { hash: 3, rgba: black },     // distinct
+        { hash: 1, rgba: white },     // non-consecutive exact hash dup of frame 0
+      ],
+      0.005
+    );
+    assert.deepEqual(dupes, [1, 3]);
   });
 });

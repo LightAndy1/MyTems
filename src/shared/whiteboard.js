@@ -124,11 +124,13 @@ export function createWhiteboardTracker(lectureId, opts = {}) {
   let seq = opts.initialSeq || 0;
   let prevHash = opts.prevHash ?? null;
   let lastSavedSec = opts.lastSavedSec ?? -Infinity;
+  const seenHashes = new Set(prevHash !== null && prevHash !== undefined ? [prevHash] : []);
 
   return {
     accept(targetLectureId, elapsedSec, base64) {
       if (!targetLectureId || targetLectureId !== lectureId || !base64) return null;
       const hash = computeFnv1aHash(base64ToUint8(base64));
+      if (seenHashes.has(hash)) return null;
       const ok = shouldSaveWhiteboardFrame({
         hash,
         prevHash,
@@ -140,6 +142,7 @@ export function createWhiteboardTracker(lectureId, opts = {}) {
       if (!ok) return null;
       seq += 1;
       prevHash = hash;
+      seenHashes.add(hash);
       lastSavedSec = elapsedSec;
       return formatWhiteboardFilename(seq, elapsedSec);
     },

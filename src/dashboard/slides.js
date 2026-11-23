@@ -139,3 +139,50 @@ export async function extractSlidesFromVideo(videoFile, lectureId, onProgress = 
     URL.revokeObjectURL(url);
   }
 }
+
+/**
+ * Plan collision-free filename renumbering for manually reordered slides.
+ */
+export function planSlideReorder(orderedFilenames) {
+  const list = Array.isArray(orderedFilenames) ? orderedFilenames : [];
+  const width = Math.max(3, String(list.length).length);
+  const ops = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const from = list[i];
+    const suffix = String(from).replace(/^\d+_/, '');
+    const to = `${String(i + 1).padStart(width, '0')}_${suffix}`;
+    if (from !== to) ops.push({ from, to });
+  }
+  return ops;
+}
+
+/**
+ * Return indices of exact or near-duplicate frames compared against prior kept frames.
+ */
+export function findDuplicateSlideIndices(descriptors, threshold = 0.003) {
+  const list = Array.isArray(descriptors) ? descriptors : [];
+  const keptHashes = new Set();
+  let lastKeptRgba = null;
+  const dupes = [];
+
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i] || {};
+    const hasHash = item.hash !== undefined && item.hash !== null;
+    if (i === 0) {
+      if (hasHash) keptHashes.add(item.hash);
+      lastKeptRgba = item.rgba || null;
+      continue;
+    }
+    if (hasHash && keptHashes.has(item.hash)) {
+      dupes.push(i);
+      continue;
+    }
+    if (threshold > 0 && lastKeptRgba && item.rgba && computeMeanPixelDiff(lastKeptRgba, item.rgba) <= threshold) {
+      dupes.push(i);
+      continue;
+    }
+    if (hasHash) keptHashes.add(item.hash);
+    if (item.rgba) lastKeptRgba = item.rgba;
+  }
+  return dupes;
+}

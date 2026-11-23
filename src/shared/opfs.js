@@ -47,6 +47,19 @@ export async function writeLectureJson(id, relPath, obj) {
   await writeLectureFile(id, relPath, JSON.stringify(obj, null, 2));
 }
 
+export async function deleteLectureFile(id, relPath) {
+  try {
+    const parts = relPath.split('/').filter(Boolean);
+    const fileName = parts.pop();
+    if (!fileName) return;
+    const baseDir = await getLectureDir(id, false);
+    const dir = parts.length ? await resolveSubdir(baseDir, parts, false) : baseDir;
+    await dir.removeEntry(fileName);
+  } catch (err) {
+    if (err?.name !== 'NotFoundError') throw err;
+  }
+}
+
 export async function listDirFiles(id, subDir) {
   try {
     const baseDir = await getLectureDir(id, false);

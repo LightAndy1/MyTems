@@ -23,6 +23,7 @@ import {
 } from '../shared/storage.js';
 import {
   deleteLectureDir,
+  deleteLectureFile,
   deleteLessonDir,
   freeLectureMedia,
   getLectureMediaBytes,
@@ -38,7 +39,12 @@ import {
   hasAudioOnlyMedia,
   resolveLectureMediaDownload,
 } from '../shared/export.js';
-import { captureCurrentVideoFrame } from './slides.js';
+import { computeFnv1aHash } from '../shared/whiteboard.js';
+import {
+  captureCurrentVideoFrame,
+  findDuplicateSlideIndices,
+  planSlideReorder,
+} from './slides.js';
 import {
   runLecturePipeline,
   runLessonPipeline,
@@ -61,6 +67,10 @@ let selectSeq = 0;
 let currentVideoUrl = null;
 let slideUrls = [];
 let slideEntries = [];
+let currentSlideParts = [];
+let selectedSlideKeys = new Set();
+let dedupeModeActive = false;
+let viewerSlideIdx = -1;
 let currentNotes = null;
 let currentTranscript = null;
 let activeTab = 'notes';
@@ -203,7 +213,7 @@ function highlightActiveSlide(currentSec) {
     if (entry.sec <= currentSec + 0.5) activeIdx = i;
   }
   slideEntries.forEach((entry, i) => {
-    entry.btn.classList.toggle('active', i === activeIdx);
+    entry.card?.classList.toggle('active', i === activeIdx);
   });
 }
 
@@ -508,8 +518,173 @@ function renderTranscript(query = '') {
   }
 }
 
+function slideEntryKey(entry) {
+  return `${entry.partId}/${entry.filename}`;
+}
+
+function syncDedupeToolbar() {
+  const count = selectedSlideKeys.size;
+  const removeBtn = el('removeSelectedSlidesBtn');
+  const clearBtn = el('clearSlideSelectionBtn');
+  if (removeBtn) {
+    removeBtn.hidden = !dedupeModeActive && count === 0;
+    removeBtn.disabled = count === 0;
+    removeBtn.textContent = `Remove Selected (${count})`;
+  }
+  if (clearBtn) {
+    clearBtn.hidden = !dedupeModeActive && count === 0;
+  }
+}
+
+async function applySlideRenumbering(partId, orderedFilenames) {
+  const ops = planSlideReorder(orderedFilenames);
+  if (!ops.length) return;
+  const staged = [];
+  for (const op of ops) {
+    const file = await readLectureFile(partId, `slides/${op.from}`);
+    staged.push({ ...op, bytes: new Uint8Array(await file.arrayBuffer()) });
+  }
+  for (const op of staged) {
+    await deleteLectureFile(partId, `slides/${op.from}`);
+  }
+  for (const op of staged) {
+    await writeLectureFile(partId, `slides/${op.to}`, op.bytes);
+  }
+}
+
+async function moveSlideInPart(entry, delta) {
+  const partSlides = slideEntries.filter((e) => e.partId === entry.partId);
+  const pos = partSlides.findIndex((e) => e.filename === entry.filename);
+  const targetPos = pos + delta;
+  if (pos < 0 || targetPos < 0 || targetPos >= partSlides.length) return;
+
+  const reordered = [...partSlides];
+  const [moved] = reordered.splice(pos, 1);
+  reordered.splice(targetPos, 0, moved);
+  await applySlideRenumbering(entry.partId, reordered.map((e) => e.filename));
+
+  const newViewerPos = viewerSlideIdx >= 0 ? targetPos + slideEntries.findIndex((e) => e.partId === entry.partId) : -1;
+  await renderSlidesForParts(currentSlideParts, selectSeq);
+  if (el('slideViewerModal')?.open && newViewerPos >= 0 && slideEntries[newViewerPos]) {
+    viewerSlideIdx = newViewerPos;
+    renderSlideViewer();
+  }
+}
+
+async function deleteSlidesFromStack(entries) {
+  if (!entries.length) return;
+  const byPart = new Map();
+  for (const entry of entries) {
+    if (!byPart.has(entry.partId)) byPart.set(entry.partId, []);
+    byPart.get(entry.partId).push(entry.filename);
+    selectedSlideKeys.delete(slideEntryKey(entry));
+  }
+  for (const [partId, filenames] of byPart.entries()) {
+    const deleteSet = new Set(filenames);
+    const remaining = slideEntries
+      .filter((e) => e.partId === partId && !deleteSet.has(e.filename))
+      .map((e) => e.filename);
+    for (const filename of filenames) {
+      await deleteLectureFile(partId, `slides/${filename}`);
+    }
+    await applySlideRenumbering(partId, remaining);
+  }
+  if (selectedSlideKeys.size === 0) dedupeModeActive = false;
+  await renderSlidesForParts(currentSlideParts, selectSeq);
+  renderStudyDesk();
+  if (el('slideViewerModal')?.open) {
+    if (!slideEntries.length) {
+      el('slideViewerModal').close();
+      viewerSlideIdx = -1;
+    } else {
+      viewerSlideIdx = Math.min(viewerSlideIdx, slideEntries.length - 1);
+      renderSlideViewer();
+    }
+  }
+  setBanner(`Removed ${entries.length} frame(s) from stack.`);
+}
+
+function renderSlideViewer() {
+  const entry = slideEntries[viewerSlideIdx];
+  if (!entry) return;
+  el('slideViewerTitle').textContent = `Frame ${viewerSlideIdx + 1} / ${slideEntries.length}`;
+  el('slideViewerMeta').textContent = `${entry.label} · ${entry.filename}`;
+  el('slideViewerImg').src = entry.url;
+  el('viewerPrevBtn').disabled = viewerSlideIdx <= 0;
+  el('viewerNextBtn').disabled = viewerSlideIdx >= slideEntries.length - 1;
+  const partSlides = slideEntries.filter((e) => e.partId === entry.partId);
+  const posInPart = partSlides.findIndex((e) => e.filename === entry.filename);
+  el('viewerMoveLeftBtn').disabled = posInPart <= 0;
+  el('viewerMoveRightBtn').disabled = posInPart < 0 || posInPart >= partSlides.length - 1;
+}
+
+function openSlideViewer(idx) {
+  if (idx < 0 || idx >= slideEntries.length) return;
+  viewerSlideIdx = idx;
+  renderSlideViewer();
+  const modal = el('slideViewerModal');
+  if (!modal.open) modal.showModal();
+}
+
+async function sampleImageRgba(url, width = 160, height = 90) {
+  const img = new Image();
+  img.src = url;
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = () => reject(new Error('Failed to decode slide image'));
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, width, height);
+  return ctx.getImageData(0, 0, width, height).data;
+}
+
+async function runDedupeScan() {
+  if (slideEntries.length < 2) {
+    setBanner('Need at least 2 frames to check for duplicates.');
+    return;
+  }
+  const threshold = Number(el('dedupeThresholdSelect')?.value ?? 0.003);
+  const nextSelected = new Set();
+  const byPart = new Map();
+  for (const entry of slideEntries) {
+    if (!byPart.has(entry.partId)) byPart.set(entry.partId, []);
+    byPart.get(entry.partId).push(entry);
+  }
+  for (const partEntries of byPart.values()) {
+    const descriptors = [];
+    for (const entry of partEntries) {
+      const bytes = new Uint8Array(await entry.file.arrayBuffer());
+      const hash = computeFnv1aHash(bytes);
+      const rgba = threshold > 0 ? await sampleImageRgba(entry.url) : null;
+      descriptors.push({ hash, rgba });
+    }
+    const dupeIndices = findDuplicateSlideIndices(descriptors, threshold);
+    for (const idx of dupeIndices) {
+      nextSelected.add(slideEntryKey(partEntries[idx]));
+    }
+  }
+  selectedSlideKeys = nextSelected;
+  dedupeModeActive = true;
+  await renderSlidesForParts(currentSlideParts, selectSeq);
+  if (nextSelected.size > 0) {
+    setBanner(`Found ${nextSelected.size} duplicate/near-duplicate frame(s). Uncheck any to keep, then click Remove Selected.`);
+  } else {
+    setBanner('No duplicate frames found at this sensitivity.');
+  }
+}
+
 async function renderSlidesForParts(parts, seq = selectSeq) {
   revokeSlideUrls();
+  const prevKey = currentSlideParts.map((p) => p.id).join(',');
+  const nextKey = parts.map((p) => p.id).join(',');
+  if (prevKey !== nextKey) {
+    dedupeModeActive = false;
+    selectedSlideKeys.clear();
+  }
+  currentSlideParts = parts;
   const grid = el('slidesGrid');
   grid.innerHTML = '';
   let totalCount = 0;
@@ -522,7 +697,8 @@ async function renderSlidesForParts(parts, seq = selectSeq) {
       revokeSlideUrls();
       return;
     }
-    for (const f of files) {
+    for (let j = 0; j < files.length; j++) {
+      const f = files[j];
       const file = await readLectureFile(part.id, `slides/${f}`);
       if (seq !== selectSeq) {
         revokeSlideUrls();
@@ -531,6 +707,9 @@ async function renderSlidesForParts(parts, seq = selectSeq) {
       const url = URL.createObjectURL(file);
       slideUrls.push(url);
       const sec = Number(f.split('_')[1]?.split('.')[0] || 0);
+      const card = document.createElement('div');
+      card.className = 'slide-card';
+
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'slide-thumb';
@@ -541,9 +720,65 @@ async function renderSlidesForParts(parts, seq = selectSeq) {
       const labelText = showPartBadge ? `Pt ${i + 1} · ${formatTimestamp(sec)}` : formatTimestamp(sec);
       label.textContent = labelText;
       btn.append(img, label);
-      btn.addEventListener('click', () => seekTo(sec, part.id));
-      grid.appendChild(btn);
-      slideEntries.push({ partId: part.id, partIndex: i + 1, sec, url, label: labelText, btn });
+
+      const entryIdx = slideEntries.length;
+      const entry = { partId: part.id, partIndex: i + 1, filename: f, file, sec, url, label: labelText, btn, card };
+      const key = slideEntryKey(entry);
+      const isSelected = selectedSlideKeys.has(key);
+      card.classList.toggle('is-selected', isSelected);
+
+      btn.addEventListener('click', () => openSlideViewer(entryIdx));
+
+      const bar = document.createElement('div');
+      bar.className = 'slide-card-bar';
+      const actions = document.createElement('div');
+      actions.className = 'slide-card-actions';
+
+      const leftBtn = document.createElement('button');
+      leftBtn.type = 'button';
+      leftBtn.className = 'slide-mini-btn';
+      leftBtn.textContent = '←';
+      leftBtn.title = 'Move earlier in stack';
+      leftBtn.disabled = j === 0;
+      leftBtn.addEventListener('click', () => moveSlideInPart(entry, -1));
+
+      const rightBtn = document.createElement('button');
+      rightBtn.type = 'button';
+      rightBtn.className = 'slide-mini-btn';
+      rightBtn.textContent = '→';
+      rightBtn.title = 'Move later in stack';
+      rightBtn.disabled = j === files.length - 1;
+      rightBtn.addEventListener('click', () => moveSlideInPart(entry, 1));
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'slide-mini-btn danger';
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove frame from stack';
+      delBtn.addEventListener('click', () => deleteSlidesFromStack([entry]));
+
+      actions.append(leftBtn, rightBtn, delBtn);
+      bar.append(actions);
+
+      if (dedupeModeActive) {
+        const toggleLabel = document.createElement('label');
+        toggleLabel.className = 'slide-dup-toggle';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = isSelected;
+        cb.addEventListener('change', () => {
+          if (cb.checked) selectedSlideKeys.add(key);
+          else selectedSlideKeys.delete(key);
+          card.classList.toggle('is-selected', cb.checked);
+          syncDedupeToolbar();
+        });
+        toggleLabel.append(cb, document.createTextNode(isSelected ? 'DUP' : 'Sel'));
+        bar.append(toggleLabel);
+      }
+
+      card.append(btn, bar);
+      grid.appendChild(card);
+      slideEntries.push(entry);
       totalCount += 1;
     }
   }
@@ -551,6 +786,7 @@ async function renderSlidesForParts(parts, seq = selectSeq) {
   el('slidesStrip').hidden = totalCount === 0;
   el('slidesEmptyHint').hidden = totalCount > 0;
   el('slidesCount').textContent = String(totalCount);
+  syncDedupeToolbar();
   highlightActiveSlide(el('videoPlayer').currentTime || 0);
   syncZipButton(parts, seq);
 }
@@ -892,7 +1128,7 @@ function renderStudyDesk(parts = null, seq = selectSeq) {
         const cap = document.createElement('span');
         cap.textContent = entry.label;
         figBtn.append(img, cap);
-        figBtn.addEventListener('click', () => seekTo(entry.sec, entry.partId));
+        figBtn.addEventListener('click', () => openSlideViewer(refIdx));
         refFigures.push(figBtn);
       }
       if (refFigures.length) {
@@ -2027,6 +2263,75 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeLibraryContextMenu();
 });
 el('lectureList').addEventListener('scroll', closeLibraryContextMenu);
+el('dedupeFilterBtn')?.addEventListener('click', () => {
+  runDedupeScan().catch((err) => setBanner(err?.message || String(err), true));
+});
+
+el('removeSelectedSlidesBtn')?.addEventListener('click', () => {
+  const targets = slideEntries.filter((e) => selectedSlideKeys.has(slideEntryKey(e)));
+  deleteSlidesFromStack(targets).catch((err) => setBanner(err?.message || String(err), true));
+});
+
+el('clearSlideSelectionBtn')?.addEventListener('click', () => {
+  dedupeModeActive = false;
+  selectedSlideKeys.clear();
+  renderSlidesForParts(currentSlideParts, selectSeq).catch((err) => setBanner(err?.message || String(err), true));
+});
+
+el('closeSlideViewerBtn')?.addEventListener('click', () => el('slideViewerModal')?.close());
+
+el('slideViewerModal')?.addEventListener('click', (e) => {
+  if (e.target === el('slideViewerModal')) el('slideViewerModal').close();
+});
+
+el('slideViewerModal')?.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' && viewerSlideIdx > 0) {
+    e.preventDefault();
+    viewerSlideIdx -= 1;
+    renderSlideViewer();
+  } else if (e.key === 'ArrowRight' && viewerSlideIdx < slideEntries.length - 1) {
+    e.preventDefault();
+    viewerSlideIdx += 1;
+    renderSlideViewer();
+  }
+});
+
+el('viewerPrevBtn')?.addEventListener('click', () => {
+  if (viewerSlideIdx > 0) {
+    viewerSlideIdx -= 1;
+    renderSlideViewer();
+  }
+});
+
+el('viewerNextBtn')?.addEventListener('click', () => {
+  if (viewerSlideIdx < slideEntries.length - 1) {
+    viewerSlideIdx += 1;
+    renderSlideViewer();
+  }
+});
+
+el('viewerMoveLeftBtn')?.addEventListener('click', () => {
+  const entry = slideEntries[viewerSlideIdx];
+  if (entry) moveSlideInPart(entry, -1).catch((err) => setBanner(err?.message || String(err), true));
+});
+
+el('viewerMoveRightBtn')?.addEventListener('click', () => {
+  const entry = slideEntries[viewerSlideIdx];
+  if (entry) moveSlideInPart(entry, 1).catch((err) => setBanner(err?.message || String(err), true));
+});
+
+el('viewerSeekBtn')?.addEventListener('click', () => {
+  const entry = slideEntries[viewerSlideIdx];
+  if (!entry) return;
+  el('slideViewerModal')?.close();
+  seekTo(entry.sec, entry.partId);
+});
+
+el('viewerDeleteBtn')?.addEventListener('click', () => {
+  const entry = slideEntries[viewerSlideIdx];
+  if (entry) deleteSlidesFromStack([entry]).catch((err) => setBanner(err?.message || String(err), true));
+});
+
 el('lectureList').addEventListener('dragstart', closeLibraryContextMenu);
 
 el('themeToggleBtn')?.addEventListener('click', () => {

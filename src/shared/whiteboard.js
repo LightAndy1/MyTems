@@ -148,3 +148,98 @@ export function createWhiteboardTracker(lectureId, opts = {}) {
     },
   };
 }
+
+/**
+ * Sample up to `maxSlides` chronologically, always keeping the first and last slide.
+ */
+export function sampleSlidesForLlm(slides, maxSlides = WHITEBOARD_CONFIG.MAX_LLM_SLIDES) {
+  const list = Array.isArray(slides) ? slides : [];
+  const cap = Math.max(1, Math.floor(maxSlides || WHITEBOARD_CONFIG.MAX_LLM_SLIDES));
+  if (list.length <= cap) return list;
+  if (cap === 1) return [list[list.length - 1]];
+
+  const out = [];
+  let lastIdx = -1;
+  for (let i = 0; i < cap; i += 1) {
+    const idx = Math.round((i * (list.length - 1)) / (cap - 1));
+    if (idx !== lastIdx) {
+      out.push(list[idx]);
+      lastIdx = idx;
+    }
+  }
+  return out;
+}
+
+/**
+ * Tracks whiteboard changes so frames emit after settling (`settleIdleMs`),
+ * on max nonstop writing (`maxDirtyMs`), or immediately before a board wipe.
+ */
+export function createWhiteboardSettleController({
+  settleIdleMs = WHITEBOARD_CONFIG.SETTLE_IDLE_MS,
+  maxDirtyMs = WHITEBOARD_CONFIG.MAX_DIRTY_MS,
+  wipeDropRatio = 0.5,
+} = {}) {
+  let lastSignature = null;
+  let dirtySinceMs = null;
+  let lastChangeMs = null;
+  let pendingFrame = null;
+
+  function reset() {
+    lastSignature = null;
+    dirtySinceMs = null;
+    lastChangeMs = null;
+    pendingFrame = null;
+  }
+
+  return {
+    async step({ signature, strokeCount = 0, nowMs = Date.now(), renderFrame }) {
+      const hasContent = Boolean(signature) && strokeCount > 0;
+      if (!hasContent) {
+        const flush = pendingFrame;
+        reset();
+        return flush;
+      }
+
+      if (
+        pendingFrame &&
+        pendingFrame.strokeCount >= 4 &&
+        strokeCount < pendingFrame.strokeCount * wipeDropRatio
+      ) {
+        const flush = pendingFrame;
+        const fresh = await renderFrame();
+        lastSignature = signature;
+        dirtySinceMs = nowMs;
+        lastChangeMs = nowMs;
+        pendingFrame = fresh ? { ...fresh, strokeCount } : null;
+        return flush;
+      }
+
+      if (signature !== lastSignature) {
+        lastSignature = signature;
+        lastChangeMs = nowMs;
+        if (dirtySinceMs === null) dirtySinceMs = nowMs;
+        const fresh = await renderFrame();
+        if (fresh) pendingFrame = { ...fresh, strokeCount };
+        if (pendingFrame && nowMs - dirtySinceMs >= maxDirtyMs) {
+          const flush = pendingFrame;
+          pendingFrame = null;
+          dirtySinceMs = null;
+          return flush;
+        }
+        return null;
+      }
+
+      if (
+        pendingFrame &&
+        (nowMs - lastChangeMs >= settleIdleMs || nowMs - dirtySinceMs >= maxDirtyMs)
+      ) {
+        const flush = pendingFrame;
+        pendingFrame = null;
+        dirtySinceMs = null;
+        return flush;
+      }
+      return null;
+    },
+    reset,
+  };
+}

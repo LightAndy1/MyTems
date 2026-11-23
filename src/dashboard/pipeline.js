@@ -1,4 +1,5 @@
-import { resolveNoteMode } from '../shared/constants.js';
+import { WHITEBOARD_CONFIG, resolveNoteMode } from '../shared/constants.js';
+import { sampleSlidesForLlm } from '../shared/whiteboard.js';
 import { buildTranscriptTailPrompt, formatTimestamp } from '../shared/sanitize.js';
 import { getLecture, getSettings, upsertLecture } from '../shared/storage.js';
 import {
@@ -272,6 +273,34 @@ async function ensureTranscript({
   return { transcript, ranStt: true };
 }
 
+async function encodeSlideForLlm(file, filename, resolvedDeps) {
+  const isPng = filename.toLowerCase().endsWith('.png');
+  const mime = isPng ? 'image/png' : 'image/jpeg';
+  if (isPng && typeof createImageBitmap === 'function' && typeof document !== 'undefined') {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, WHITEBOARD_CONFIG.LLM_MAX_WIDTH / Math.max(1, bitmap.width));
+      const w = Math.max(1, Math.round(bitmap.width * scale));
+      const h = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close?.();
+      const jpeg = await new Promise((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', WHITEBOARD_CONFIG.LLM_JPEG_QUALITY)
+      );
+      if (jpeg) return resolvedDeps.blobToDataUrl(jpeg, 'image/jpeg');
+    } catch {
+      // Fall back to raw file encoding if bitmap decode/canvas fails.
+    }
+  }
+  return resolvedDeps.blobToDataUrl(file, mime);
+}
+
 async function ensureSlidesForLecture({ lectureId, lecture, onStage, resolvedDeps }) {
   const existingSlideFiles = await resolvedDeps.listDirFiles(lectureId, 'slides');
   const skipVideoSlides =
@@ -428,11 +457,11 @@ export async function runLecturePipeline({
 
     onStage('Generating study notes & Exam Radar...');
     await resolvedDeps.upsertLecture({ id: lectureId, status: 'summarizing' });
+    const llmSlides = sampleSlidesForLlm(slides, WHITEBOARD_CONFIG.MAX_LLM_SLIDES);
     const slidePayloads = [];
-    for (const s of slides) {
+    for (const s of llmSlides) {
       const file = await resolvedDeps.readLectureFile(lectureId, `slides/${s.filename}`);
-      const mime = s.filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-      slidePayloads.push({ ...s, dataUrl: await resolvedDeps.blobToDataUrl(file, mime) });
+      slidePayloads.push({ ...s, dataUrl: await encodeSlideForLlm(file, s.filename, resolvedDeps) });
     }
 
     const messages = buildVisionMessages(transcript, slidePayloads, activeHint, activeMode, activeMultiSpeaker);
@@ -449,7 +478,7 @@ export async function runLecturePipeline({
       noteMode: activeMode,
       multiSpeaker: activeMultiSpeaker,
       examRadar,
-      slides,
+      slides: llmSlides,
       sttCostUsd: transcript.sttCostUsd || 0,
       llmCostUsd: Number(totalLlmCost.toFixed(6)),
       totalCostUsd: Number(((transcript.sttCostUsd || 0) + totalLlmCost).toFixed(6)),
@@ -617,16 +646,17 @@ export async function runLessonPipeline({
         resolvedDeps,
       });
 
+      const perPartCap = Math.max(1, Math.floor(WHITEBOARD_CONFIG.MAX_LLM_SLIDES / lectureIds.length));
+      const llmSlides = sampleSlidesForLlm(slides, perPartCap);
       const slidePayloads = [];
-      for (const s of slides) {
+      for (const s of llmSlides) {
         const file = await resolvedDeps.readLectureFile(lectureId, `slides/${s.filename}`);
-        const mime = s.filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
         const payload = {
           partId: lectureId,
           partIndex: i + 1,
           filename: s.filename,
           timestampSec: s.timestampSec,
-          dataUrl: await resolvedDeps.blobToDataUrl(file, mime),
+          dataUrl: await encodeSlideForLlm(file, s.filename, resolvedDeps),
         };
         slidePayloads.push(payload);
         allSlides.push({

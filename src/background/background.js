@@ -58,6 +58,8 @@ async function maybeAttachWhiteboard({ tabId, tabTitle, lectureId, startedAtMs, 
       lectureId,
       startedAtMs,
       intervalMs: WHITEBOARD_CONFIG.INTERVAL_MS,
+      settleIdleMs: WHITEBOARD_CONFIG.SETTLE_IDLE_MS,
+      maxDirtyMs: WHITEBOARD_CONFIG.MAX_DIRTY_MS,
     });
   } catch (err) {
     console.warn('Whiteboard attach skipped:', err?.message || err);

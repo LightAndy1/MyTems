@@ -6,6 +6,20 @@
   let activeLectureId = null;
   let activeStartedAtMs = 0;
   let inFlight = false;
+  let settleIdleMs = 5000;
+  let maxDirtyMs = 60000;
+
+  let lastSignature = null;
+  let dirtySinceMs = null;
+  let lastChangeMs = null;
+  let pendingFrame = null;
+
+  function resetSettleState() {
+    lastSignature = null;
+    dirtySinceMs = null;
+    lastChangeMs = null;
+    pendingFrame = null;
+  }
 
   const STROKE_STYLE_PROPS = [
     ['fill', 'fill'],
@@ -251,29 +265,133 @@
     return canvasBlobToBase64(out);
   }
 
+  function probeBoardState() {
+    const root = document.querySelector('#canvasContent');
+    if (root) {
+      const strokeSvgs = [...root.querySelectorAll('.canvasChildElement svg')].filter((el) => {
+        if (el.classList.contains('canvasBackground') || el.classList.contains('inkRuler')) return false;
+        return el.querySelector('path, polyline, line, rect, circle, ellipse, polygon, text');
+      });
+      if (!strokeSvgs.length) return { signature: null, strokeCount: 0 };
+
+      const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 720;
+      const rects = strokeSvgs.map((el) => el.getBoundingClientRect());
+      const box = computeVisibleBounds(rects, vw, vh, 24);
+      if (!box) return { signature: null, strokeCount: 0 };
+
+      let nodeCount = 0;
+      let pathChars = 0;
+      for (const el of strokeSvgs) {
+        const primitives = el.querySelectorAll('path, polyline, line, rect, circle, ellipse, polygon, text');
+        nodeCount += primitives.length;
+        for (const p of primitives) {
+          pathChars += (p.getAttribute('d') || p.getAttribute('points') || '').length;
+        }
+      }
+      return {
+        signature: `cc:${strokeSvgs.length}:${nodeCount}:${pathChars}:${box.x},${box.y},${box.width},${box.height}`,
+        strokeCount: strokeSvgs.length,
+      };
+    }
+
+    const surface = pickFallbackSurface();
+    if (!surface) return { signature: null, strokeCount: 0 };
+    if (surface.kind === 'svg') {
+      const primitives = surface.el.querySelectorAll('path, polyline, line, rect, circle, ellipse, polygon, text');
+      const count = primitives.length;
+      if (!count) return { signature: null, strokeCount: 0 };
+      return { signature: `svg:${count}:${surface.el.innerHTML.length}`, strokeCount: count };
+    }
+
+    try {
+      const probe = document.createElement('canvas');
+      probe.width = 32;
+      probe.height = 18;
+      const pctx = probe.getContext('2d');
+      pctx.drawImage(surface.el, 0, 0, 32, 18);
+      const data = pctx.getImageData(0, 0, 32, 18).data;
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < data.length; i += 4) {
+        hash ^= data[i] ^ (data[i + 1] << 8) ^ (data[i + 2] << 16);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+      }
+      return { signature: `canvas:${hash}`, strokeCount: 1 };
+    } catch {
+      return { signature: `canvas:${surface.el.width}x${surface.el.height}`, strokeCount: 1 };
+    }
+  }
+
+  async function renderCurrentFrame() {
+    let base64 = await rasterizeCanvasContentToPngBase64();
+    if (!base64) {
+      const surface = pickFallbackSurface();
+      if (!surface) return null;
+      base64 =
+        surface.kind === 'svg'
+          ? await rasterizeSvgToPngBase64(surface.el)
+          : await canvasToPngBase64(surface.el);
+    }
+    if (!base64) return null;
+    const elapsedSec = Math.max(0, Math.floor((Date.now() - activeStartedAtMs) / 1000));
+    return { base64, elapsedSec };
+  }
+
+  function emitFrame(frame) {
+    if (!frame?.base64 || !activeLectureId) return;
+    chrome.runtime
+      .sendMessage({
+        type: 'WHITEBOARD_FRAME',
+        lectureId: activeLectureId,
+        elapsedSec: frame.elapsedSec,
+        base64: frame.base64,
+      })
+      .catch(() => {});
+  }
+
   async function captureOnce() {
     if (!activeLectureId || inFlight) return;
     inFlight = true;
     try {
-      let base64 = await rasterizeCanvasContentToPngBase64();
-      if (!base64) {
-        const surface = pickFallbackSurface();
-        if (!surface) return;
-        base64 =
-          surface.kind === 'svg'
-            ? await rasterizeSvgToPngBase64(surface.el)
-            : await canvasToPngBase64(surface.el);
+      const nowMs = Date.now();
+      const { signature, strokeCount } = probeBoardState();
+      const hasContent = Boolean(signature) && strokeCount > 0;
+
+      if (!hasContent) {
+        if (pendingFrame) emitFrame(pendingFrame);
+        resetSettleState();
+        return;
       }
-      if (!base64) return;
-      const elapsedSec = Math.max(0, Math.floor((Date.now() - activeStartedAtMs) / 1000));
-      chrome.runtime
-        .sendMessage({
-          type: 'WHITEBOARD_FRAME',
-          lectureId: activeLectureId,
-          elapsedSec,
-          base64,
-        })
-        .catch(() => {});
+
+      if (pendingFrame && pendingFrame.strokeCount >= 4 && strokeCount < pendingFrame.strokeCount * 0.5) {
+        emitFrame(pendingFrame);
+        const fresh = await renderCurrentFrame();
+        lastSignature = signature;
+        dirtySinceMs = nowMs;
+        lastChangeMs = nowMs;
+        pendingFrame = fresh ? { ...fresh, strokeCount } : null;
+        return;
+      }
+
+      if (signature !== lastSignature) {
+        lastSignature = signature;
+        lastChangeMs = nowMs;
+        if (dirtySinceMs === null) dirtySinceMs = nowMs;
+        const fresh = await renderCurrentFrame();
+        if (fresh) pendingFrame = { ...fresh, strokeCount };
+        if (pendingFrame && nowMs - dirtySinceMs >= maxDirtyMs) {
+          emitFrame(pendingFrame);
+          pendingFrame = null;
+          dirtySinceMs = null;
+        }
+        return;
+      }
+
+      if (pendingFrame && (nowMs - lastChangeMs >= settleIdleMs || nowMs - dirtySinceMs >= maxDirtyMs)) {
+        emitFrame(pendingFrame);
+        pendingFrame = null;
+        dirtySinceMs = null;
+      }
     } catch {
       // Never disturb the host Teams/Whiteboard page on transient DOM/taint errors.
     } finally {
@@ -285,6 +403,7 @@
     clearInterval(timerId);
     timerId = null;
     activeLectureId = null;
+    resetSettleState();
   }
 
   chrome.runtime.onMessage.addListener((msg) => {
@@ -292,7 +411,9 @@
       stopMonitor();
       activeLectureId = msg.lectureId;
       activeStartedAtMs = msg.startedAtMs || Date.now();
-      const intervalMs = Math.max(5000, Number(msg.intervalMs) || 25000);
+      settleIdleMs = Math.max(2000, Number(msg.settleIdleMs) || 5000);
+      maxDirtyMs = Math.max(15000, Number(msg.maxDirtyMs) || 60000);
+      const intervalMs = Math.max(2000, Number(msg.intervalMs) || 5000);
       setTimeout(captureOnce, 2500);
       timerId = setInterval(captureOnce, intervalMs);
     } else if (msg?.type === 'MYTEMS_WB_STOP') {

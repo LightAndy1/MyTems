@@ -1,14 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { WHITEBOARD_CONFIG } from '../src/shared/constants.js';
 import {
   base64ToUint8,
   computeFnv1aHash,
   computeStrokeBounds,
+  createWhiteboardSettleController,
   createWhiteboardTracker,
   formatWhiteboardFilename,
   matchesWhiteboardMeeting,
   parseMeetingFilters,
   pickWhiteboardSurface,
+  sampleSlidesForLlm,
   saveWhiteboardSlide,
   shouldEnableWhiteboard,
   shouldSaveWhiteboardFrame,
@@ -144,5 +147,103 @@ describe('createWhiteboardTracker', () => {
     assert.equal(tracker.accept('lec_99', 18, imgB), null);
     assert.equal(tracker.accept('lec_99', 30, imgB), '002_30_wb.png');
     assert.equal(tracker.accept('lec_99', 60, imgC), null);
+  });
+});
+
+describe('2h whiteboard settle, wipe protection, and LLM sampling', () => {
+  it('supports 240 captures and 60 LLM slides in config', () => {
+    assert.equal(WHITEBOARD_CONFIG.MAX_CAPTURES, 240);
+    assert.equal(WHITEBOARD_CONFIG.MAX_LLM_SLIDES, 60);
+    assert.equal(WHITEBOARD_CONFIG.SETTLE_IDLE_MS, 5000);
+  });
+
+  it('emits after 5s idle and flushes pending frame before full wipe or sharp stroke drop', async () => {
+    const ctrl = createWhiteboardSettleController({ settleIdleMs: 5000, maxDirtyMs: 60000 });
+
+    // Initial strokes at t=0 -> buffered, not emitted yet
+    let res = await ctrl.step({
+      signature: 's1',
+      strokeCount: 6,
+      nowMs: 0,
+      renderFrame: async () => ({ base64: 'frame1', elapsedSec: 0 }),
+    });
+    assert.equal(res, null);
+
+    // Unchanged at t=5000ms -> settled, emits frame1
+    res = await ctrl.step({
+      signature: 's1',
+      strokeCount: 6,
+      nowMs: 5000,
+      renderFrame: async () => ({ base64: 'frame1', elapsedSec: 5 }),
+    });
+    assert.deepEqual(res, { base64: 'frame1', elapsedSec: 0, strokeCount: 6 });
+
+    // New strokes at t=10000ms -> buffered
+    res = await ctrl.step({
+      signature: 's2',
+      strokeCount: 10,
+      nowMs: 10000,
+      renderFrame: async () => ({ base64: 'frame2', elapsedSec: 10 }),
+    });
+    assert.equal(res, null);
+
+    // Prof wipes whole board at t=12000ms -> flushes frame2 immediately, never emits blank
+    res = await ctrl.step({
+      signature: null,
+      strokeCount: 0,
+      nowMs: 12000,
+      renderFrame: async () => null,
+    });
+    assert.deepEqual(res, { base64: 'frame2', elapsedSec: 10, strokeCount: 10 });
+
+    // Empty board stays silent
+    res = await ctrl.step({
+      signature: null,
+      strokeCount: 0,
+      nowMs: 17000,
+      renderFrame: async () => null,
+    });
+    assert.equal(res, null);
+
+    // Sharp drop (< 50% of 8 strokes) flushes previous pending frame immediately
+    await ctrl.step({
+      signature: 's3',
+      strokeCount: 8,
+      nowMs: 20000,
+      renderFrame: async () => ({ base64: 'frame3', elapsedSec: 20 }),
+    });
+    res = await ctrl.step({
+      signature: 's4',
+      strokeCount: 2,
+      nowMs: 22000,
+      renderFrame: async () => ({ base64: 'frame4', elapsedSec: 22 }),
+    });
+    assert.deepEqual(res, { base64: 'frame3', elapsedSec: 20, strokeCount: 8 });
+  });
+
+  it('force-flushes after maxDirtyMs during nonstop writing', async () => {
+    const ctrl = createWhiteboardSettleController({ settleIdleMs: 5000, maxDirtyMs: 60000 });
+    await ctrl.step({
+      signature: 's1',
+      strokeCount: 2,
+      nowMs: 1000,
+      renderFrame: async () => ({ base64: 'f1', elapsedSec: 1 }),
+    });
+    const res = await ctrl.step({
+      signature: 's2',
+      strokeCount: 5,
+      nowMs: 61000,
+      renderFrame: async () => ({ base64: 'f2', elapsedSec: 61 }),
+    });
+    assert.deepEqual(res, { base64: 'f2', elapsedSec: 61, strokeCount: 5 });
+  });
+
+  it('samples up to 60 slides chronologically keeping first and last', () => {
+    const slides = Array.from({ length: 120 }, (_, i) => ({ filename: `${i}.png`, timestampSec: i * 10 }));
+    const sampled = sampleSlidesForLlm(slides, 60);
+    assert.equal(sampled.length, 60);
+    assert.equal(sampled[0].filename, '0.png');
+    assert.equal(sampled[sampled.length - 1].filename, '119.png');
+    assert.equal(sampleSlidesForLlm(slides.slice(0, 20), 60).length, 20);
   });
 });

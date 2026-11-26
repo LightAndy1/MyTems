@@ -24,14 +24,30 @@ Zero-bundler Chromium Manifest V3 extension for capturing Microsoft Teams lectur
 
 ## Getting Started
 
+### For Colleagues (Quick Install, No Git Needed)
+
+1. Download the latest release: [**`mytems.zip`**](https://github.com/LightAndy1/MyTems/releases/latest/download/mytems.zip)
+2. Unzip it somewhere permanent (e.g. `Documents/MyTems`).
+3. Open `chrome://extensions` (or `edge://extensions` / `brave://extensions`) in your browser.
+4. Turn on **Developer mode** (top-right toggle).
+5. Click **Load unpacked** and select the unzipped `MyTems` folder.
+
+### Updating Later
+
+When the extension notifies you of a new version (or via **Settings → Check for Updates**):
+
+1. Click **Download Update (.zip)**.
+2. Unzip and **replace** your existing `MyTems` folder (keeping the same folder preserves all your recordings and settings).
+3. Open `chrome://extensions` and click **Reload** (`↻`) on MyTems.
+
+### For Developers
+
 1. Clone the repository:
    ```sh
    git clone https://github.com/LightAndy1/MyTems.git
    ```
-2. Open `chrome://extensions` (or `helium://extensions`) in your Chromium-based browser.
-3. Enable **Developer mode**.
-4. Click **Load unpacked** and select the cloned `MyTems` directory.
-5. Open the extension popup during a Microsoft Teams tab session to start recording, and open the dashboard to configure OpenRouter or local HTTP endpoints in **Settings**.
+2. Open `chrome://extensions` (or `helium://extensions`) in your Chromium-based browser, enable **Developer mode**, and **Load unpacked** on the cloned `MyTems` directory.
+3. To publish a new release zip for colleagues: bump `"version"` in `manifest.json`, commit, and push a matching tag (`git tag v0.2.0 && git push --tags`). GitHub Actions will run tests and attach `mytems.zip` to a new GitHub Release.
 
 ## Development & Testing
 

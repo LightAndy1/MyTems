@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MyTems — Teams Lecture Companion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Free local lecture capture in Helium with on-demand OpenRouter/local AI notes, slide extraction, Exam Radar, and Notion export.",
   "permissions": [
     "tabCapture",

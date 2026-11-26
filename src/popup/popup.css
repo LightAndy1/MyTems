@@ -190,6 +190,35 @@ input::placeholder {
   color: var(--muted);
 }
 
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-stack[hidden] {
+  display: none;
+}
+
+.toggle-pair {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dispatch-status {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+}
+
+.dispatch-status.is-warn {
+  color: var(--accent-ink);
+}
+
 .wb-toggle {
   display: flex;
   align-items: center;

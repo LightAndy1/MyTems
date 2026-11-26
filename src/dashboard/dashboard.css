@@ -901,11 +901,30 @@ select {
   min-width: 260px;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .title-block h2 {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.workflow-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .meta-line {
@@ -1549,8 +1568,8 @@ select {
 }
 
 .speaker-tag[data-speaker-idx="4"] {
-  background: rgba(168, 85, 247, 0.14);
-  color: #7e22ce;
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f766e;
 }
 
 .speaker-tag[data-speaker-idx="5"] {
@@ -1560,8 +1579,12 @@ select {
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .speaker-tag[data-speaker-idx="4"] {
-    color: #d8b4fe;
+    color: #5eead4;
   }
+}
+
+[data-theme="dark"] .speaker-tag[data-speaker-idx="4"] {
+  color: #5eead4;
 }
 
 .ts-link {
@@ -1663,6 +1686,10 @@ dialog.modal {
   color: var(--ink);
 }
 
+dialog.modal.modal-wide {
+  max-width: 760px;
+}
+
 dialog.modal::backdrop {
   background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(5px);
@@ -1677,6 +1704,165 @@ dialog.modal::backdrop {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.settings-modal {
+  max-height: 90vh;
+}
+
+.settings-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.settings-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-top-row .checkbox-field {
+  flex: 1;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-section-head h3 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.key-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--surface-soft);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.key-pill.is-armed {
+  background: var(--mint-soft);
+  color: var(--mint-ink);
+  border-color: rgba(4, 120, 87, 0.25);
+}
+
+.basement-details {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  background: var(--surface-soft);
+}
+
+.basement-details summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.basement-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stage-dispatch-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px;
+  background: var(--surface-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stage-dispatch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stage-dispatch-head strong {
+  font-size: 13px;
+}
+
+.stage-models-status {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.stage-models-status.is-error {
+  color: var(--danger);
+}
+
+.stage-dispatch-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.85fr) minmax(190px, 1.15fr) minmax(190px, 1fr);
+  gap: 10px;
+}
+
+.inline-check-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.inline-check-head input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.routing-box {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-soft);
+}
+
+@media (max-width: 720px) {
+  .basement-grid,
+  .stage-dispatch-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .modal-head {
@@ -1815,7 +2001,7 @@ dialog.modal::backdrop {
 
 .btn-update {
   background: var(--accent-soft, #e9f1ff);
-  color: var(--accent, #0057ff);
+  color: var(--accent-ink, #0044cc);
   border-color: var(--accent, #0057ff);
 }
 

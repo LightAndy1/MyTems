@@ -13,13 +13,17 @@ export async function getLectureDir(id, create = false) {
   return resolveSubdir(root, ['lectures', id], create);
 }
 
-export async function writeLectureFile(id, relPath, data) {
+export async function openLectureWritable(id, relPath) {
   const parts = relPath.split('/').filter(Boolean);
   const fileName = parts.pop();
   const baseDir = await getLectureDir(id, true);
   const dir = parts.length ? await resolveSubdir(baseDir, parts, true) : baseDir;
   const fh = await dir.getFileHandle(fileName, { create: true });
-  const writable = await fh.createWritable();
+  return fh.createWritable();
+}
+
+export async function writeLectureFile(id, relPath, data) {
+  const writable = await openLectureWritable(id, relPath);
   await writable.write(data);
   await writable.close();
 }

@@ -26,7 +26,16 @@ export const DEFAULT_SETTINGS = {
   whiteboardMeetings: '',
   jevEnabled: false,
   jevModel: 'typesafe/jev-latest',
+  dropRelayUrl: 'https://ntfy.sh',
 };
+
+export const DROP_LAYERS = [
+  { id: 'video', label: 'Video (video.webm)' },
+  { id: 'audio', label: 'Audio Segments (audio/)' },
+  { id: 'slides', label: 'Slides & Whiteboard (slides/)' },
+  { id: 'transcript', label: 'Transcript (transcript.json)' },
+  { id: 'notes', label: 'Notes & Exam Radar (notes.json)' },
+];
 
 export const HINT_PRESETS = [
   {

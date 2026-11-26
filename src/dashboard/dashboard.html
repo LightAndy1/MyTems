@@ -139,20 +139,30 @@
             <section id="lectureView" class="lecture-view" hidden>
               <header class="topbar card">
                 <div class="title-block">
-                  <h2 id="lecTitle"></h2>
+                  <div class="title-row">
+                    <h2 id="lecTitle"></h2>
+                    <button id="quickGroupBtn" class="btn btn-sm" type="button" title="Assign Subject or Group into Lesson">Group / Rename</button>
+                  </div>
                   <p id="lecMeta" class="meta-line mono"></p>
                   <div class="hint-row">
                     <label class="inline-field">
                       <span>Subject</span>
                       <input id="lecSubjectInput" type="text" placeholder="Subject / course group" />
                     </label>
-                    <label class="inline-field wide">
-                      <span>Hint</span>
-                      <input id="lecCourseHint" type="text" placeholder="Optional topic (improves RO + EN technical terms)" />
-                    </label>
                     <label class="inline-field">
                       <span>Mode</span>
                       <select id="noteModeSelect" aria-label="Note mode"></select>
+                    </label>
+                    <label class="inline-field inline-check" title="Tell note generation that multiple people spoke in this recording">
+                      <input id="multiSpeakerToggle" type="checkbox" />
+                      <span>Multi-speaker</span>
+                    </label>
+                    <button id="toggleHintRowBtn" class="btn btn-sm" type="button" aria-expanded="false">+ Hint &amp; Preset</button>
+                  </div>
+                  <div id="hintExtraRow" class="hint-row" hidden>
+                    <label class="inline-field wide">
+                      <span>Hint</span>
+                      <input id="lecCourseHint" type="text" placeholder="Optional topic (improves RO + EN technical terms)" />
                     </label>
                     <label class="inline-field">
                       <span>Preset</span>
@@ -160,36 +170,36 @@
                         <option value="">Custom</option>
                       </select>
                     </label>
-                    <label class="inline-field inline-check" title="Tell note generation that multiple people spoke in this recording">
-                      <input id="multiSpeakerToggle" type="checkbox" />
-                      <span>Multi-speaker</span>
-                    </label>
                   </div>
                 </div>
 
-                <div class="actions">
-                  <button id="extractSlidesBtn" class="btn btn-sm" title="Extract changed video frames locally ($0)">Extract Slides ($0)</button>
-                  <button id="transcribeOnlyBtn" class="btn btn-sm" title="Run speech-to-text only ($0 LLM)">Transcribe Only ($0 LLM)</button>
-                  <button id="summarizeBtn" class="btn btn-sm btn-primary">Generate Notes</button>
-                  <button id="copyNotionBtn" class="btn btn-sm" disabled>Copy Notion MD</button>
-                  <button id="zipNotionBtn" class="btn btn-sm" disabled>Export .zip</button>
-                  <button id="quickDownloadBtn" class="btn btn-sm" type="button">Download .webm</button>
-                  <button id="shareDropBtn" class="btn btn-sm" type="button">Share Drop</button>
+                <div class="workflow-bar">
+                  <div class="actions" role="group" aria-label="AI Processing Pipeline">
+                    <button id="extractSlidesBtn" class="btn btn-sm" title="Extract changed video frames locally ($0)">Slides ($0)</button>
+                    <button id="transcribeOnlyBtn" class="btn btn-sm" title="Run speech-to-text only ($0 LLM)">1. Transcribe ($0 LLM)</button>
+                    <button id="summarizeBtn" class="btn btn-sm btn-primary">2. Cook Notes &amp; Radar</button>
+                  </div>
 
-                  <details id="storageMenu" class="menu-wrap">
-                    <summary class="btn btn-sm btn-icon" title="Storage &amp; file actions" aria-label="Storage and file actions">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                        <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
-                      </svg>
-                    </summary>
-                    <div class="menu-panel" role="menu">
-                      <button id="downloadVideoBtn" class="menu-item" type="button" role="menuitem">Download Video (.webm)</button>
-                      <button id="renameLessonBtn" class="menu-item" type="button" role="menuitem">Group / Rename Lesson...</button>
-                      <button id="ungroupLectureBtn" class="menu-item" type="button" role="menuitem">Ungroup (Make Standalone)</button>
-                      <button id="freeMediaBtn" class="menu-item" type="button" role="menuitem">Free Media Space (keep notes)</button>
-                      <button id="deleteLectureBtn" class="menu-item menu-danger" type="button" role="menuitem">Delete Lecture</button>
-                    </div>
-                  </details>
+                  <div class="actions" role="group" aria-label="Export and Vault Actions">
+                    <button id="copyNotionBtn" class="btn btn-sm" disabled>Copy MD</button>
+                    <button id="zipNotionBtn" class="btn btn-sm" disabled>Export .zip</button>
+                    <button id="shareDropBtn" class="btn btn-sm" type="button">Dead Drop</button>
+
+                    <details id="storageMenu" class="menu-wrap">
+                      <summary class="btn btn-sm btn-icon" title="Storage &amp; file actions" aria-label="Storage and file actions">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                          <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+                        </svg>
+                      </summary>
+                      <div class="menu-panel" role="menu">
+                        <button id="downloadVideoBtn" class="menu-item" type="button" role="menuitem">Download Video (.webm)</button>
+                        <button id="renameLessonBtn" class="menu-item" type="button" role="menuitem">Group / Rename Lesson...</button>
+                        <button id="ungroupLectureBtn" class="menu-item" type="button" role="menuitem">Ungroup (Make Standalone)</button>
+                        <button id="freeMediaBtn" class="menu-item" type="button" role="menuitem">Free Media Space (keep notes)</button>
+                        <button id="deleteLectureBtn" class="menu-item menu-danger" type="button" role="menuitem">Delete Lecture</button>
+                      </div>
+                    </details>
+                  </div>
                 </div>
               </header>
 
@@ -297,8 +307,8 @@
     </div>
 
     <!-- Command-Card Settings Modal -->
-    <dialog id="settingsModal" class="modal" aria-labelledby="settingsModalTitle">
-      <form id="settingsForm" method="dialog" class="modal-card cmd-modal">
+    <dialog id="settingsModal" class="modal modal-wide" aria-labelledby="settingsModalTitle">
+      <form id="settingsForm" method="dialog" class="modal-card cmd-modal settings-modal">
         <header class="modal-head">
           <div class="modal-title-wrap">
             <svg width="26" height="26" viewBox="0 0 36 36" fill="none" aria-hidden="true">
@@ -308,7 +318,7 @@
               <path d="M11.2 14.6l4.4 3.4-4.4 3.4v-6.8z" fill="#0057FF" />
               <circle cx="23.7" cy="18" r="2.7" fill="#00B873" />
             </svg>
-            <h2 id="settingsModalTitle">MyTems Express Settings</h2>
+            <h2 id="settingsModalTitle">MyTems Supply &amp; Dispatch</h2>
           </div>
           <button type="button" id="closeSettingsBtn" class="btn btn-sm btn-icon" aria-label="Close Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -317,130 +327,234 @@
           </button>
         </header>
 
-        <div class="two-col">
-          <label class="checkbox-field">
-            <input id="setting-ai-enabled" name="aiEnabled" type="checkbox" checked />
-            <span>Enable AI (Transcription &amp; Notes)</span>
-          </label>
-          <label class="checkbox-field">
-            <input id="setting-expert-mode" name="expertMode" type="checkbox" />
-            <span>Expert Mode (API keys, models &amp; routing)</span>
-          </label>
-        </div>
-
-        <div id="expertSettingsSection" class="field-group" hidden>
-        <div class="segmented" role="group" aria-label="AI Provider Mode">
-          <button type="button" data-mode="cloud" class="seg-btn active">Cloud Dispatch (OpenRouter)</button>
-          <button type="button" data-mode="local" class="seg-btn">Local Basement Node</button>
-        </div>
-
-        <div id="cloudFields" class="field-group">
-          <label class="field">
-            <span>OpenRouter API Key</span>
-            <input class="input mono" name="openrouterApiKey" type="password" placeholder="sk-or-v1-..." autocomplete="off" />
-          </label>
-
-          <div class="field">
-            <span>Provider Routing Strategy</span>
-            <select name="providerRouting" id="providerRoutingSelect" hidden>
-              <option value="auto">Default (Auto)</option>
-              <option value="price">Cheapest (sort: price)</option>
-              <option value="throughput">Fastest (sort: throughput)</option>
-            </select>
-            <div class="routing-cards" role="radiogroup" aria-label="Provider Routing Strategy">
-              <button type="button" class="route-card active" data-route="auto">
-                <strong>Default (Auto)</strong>
-                <span>OpenRouter picks route</span>
-              </button>
-              <button type="button" class="route-card" data-route="price">
-                <strong>Moritz Budget</strong>
-                <span>Cheapest (sort: price)</span>
-              </button>
-              <button type="button" class="route-card" data-route="throughput">
-                <strong>Lenny Speed</strong>
-                <span>Fastest (throughput)</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="two-col">
-            <label class="field">
-              <span>STT Model</span>
-              <input class="input mono" name="sttModel" type="text" placeholder="openai/whisper-large-v3" />
+        <div class="settings-scroll">
+          <div class="settings-top-row">
+            <label class="checkbox-field">
+              <input id="setting-ai-enabled" name="aiEnabled" type="checkbox" checked />
+              <span>Enable AI (Transcription &amp; Notes)</span>
             </label>
-            <label class="field">
-              <span>Summary &amp; Vision Model</span>
-              <input class="input mono" name="llmModel" type="text" placeholder="google/gemini-2.5-flash" />
-            </label>
+            <button id="syncAllModelsBtn" type="button" class="btn btn-sm">Sync Live Models</button>
           </div>
 
-          <label class="field">
-            <span>Preferred Providers (optional)</span>
-            <input class="input mono" name="preferredProviders" type="text" placeholder="e.g. relace, deepinfra" />
-          </label>
-
-          <label class="checkbox-field">
-            <input id="setting-jev-enabled" name="jevEnabled" type="checkbox" />
-            <span>Experimental: Calibrate Exam Radar via OpenRouter Jev (<code>typesafe/jev-latest</code>)</span>
-          </label>
-        </div>
-
-        <div id="localFields" class="field-group" hidden>
-          <div class="two-col">
-            <label class="field"><span>Local STT URL</span><input class="input mono" name="localSttUrl" type="url" /></label>
-            <label class="field"><span>Local STT Model</span><input class="input mono" name="localSttModel" type="text" /></label>
-          </div>
-          <div class="two-col">
-            <label class="field"><span>Local LLM URL</span><input class="input mono" name="localLlmUrl" type="url" /></label>
-            <label class="field"><span>Local Vision/LLM Model</span><input class="input mono" name="localLlmModel" type="text" /></label>
-          </div>
-        </div>
-
-        <label class="field">
-          <span>Drop Relay URL (P2P Signaling)</span>
-          <input class="input" name="dropRelayUrl" type="url" placeholder="https://ntfy.sh" />
-        </label>
-        </div>
-
-        <label class="field">
-          <span>Default Course Hint</span>
-          <input class="input" name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
-        </label>
-
-        <div class="two-col">
-          <label class="field">
-            <span>MS Whiteboard Capture</span>
-            <select class="input" name="whiteboardMode">
-              <option value="off">Off</option>
-              <option value="match">Matching Meetings Only</option>
-              <option value="always">Always On</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Whiteboard Meeting Keywords</span>
-            <input class="input" name="whiteboardMeetings" type="text" placeholder="e.g. Algebra, Calculus, Math" />
-          </label>
-        </div>
-
-        <p class="helper-note">Automatic RO/EN detection stays locked on — zero telemetry, zero server storage. Tip: for GLM-5.3-Flash, pick Moritz Budget or list a provider slug.</p>
-
-        <section class="update-box" aria-label="Extension updates">
-          <div class="update-box-head">
-            <div>
-              <strong>Extension Updates</strong>
-              <span id="updateStatusText" class="update-status mono">v0.1.0</span>
+          <section class="settings-section" aria-label="Vendor Key Vault">
+            <div class="settings-section-head">
+              <h3>Vendor Vault</h3>
+              <span class="settings-hint">Enter each vendor key once, then pick any vendor per stage.</span>
             </div>
-            <div class="update-box-actions">
-              <button id="checkUpdateBtn" type="button" class="btn btn-sm">Check for Updates</button>
-              <button id="downloadUpdateBtn" type="button" class="btn btn-sm btn-primary" hidden>Download Update (.zip)</button>
+
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label-row">
+                  <span>OpenRouter</span>
+                  <span id="keyBadge-openrouter" class="key-pill">No Key</span>
+                </span>
+                <input class="input mono" name="key_openrouter" type="password" placeholder="sk-or-v1-..." autocomplete="off" />
+              </label>
+
+              <label class="field">
+                <span class="field-label-row">
+                  <span>Google AI Studio</span>
+                  <span id="keyBadge-google" class="key-pill">No Key</span>
+                </span>
+                <input class="input mono" name="key_google" type="password" placeholder="AIza..." autocomplete="off" />
+              </label>
+
+              <label class="field">
+                <span class="field-label-row">
+                  <span>NVIDIA NIM</span>
+                  <span id="keyBadge-nvidia" class="key-pill">No Key</span>
+                </span>
+                <input class="input mono" name="key_nvidia" type="password" placeholder="nvapi-..." autocomplete="off" />
+              </label>
+
+              <label class="field">
+                <span class="field-label-row">
+                  <span>Groq</span>
+                  <span id="keyBadge-groq" class="key-pill">No Key</span>
+                </span>
+                <input class="input mono" name="key_groq" type="password" placeholder="gsk_..." autocomplete="off" />
+              </label>
             </div>
-          </div>
-          <ol id="updateSteps" class="update-steps" hidden>
-            <li>Unzip and <strong>replace</strong> your existing <code>MyTems</code> folder (keeps all recordings &amp; settings).</li>
-            <li>Open <code>chrome://extensions</code> (or <code>edge://extensions</code>).</li>
-            <li>Click <strong>Reload</strong> (<code>↻</code>) on MyTems.</li>
-          </ol>
-        </section>
+
+            <details id="basementNodeDetails" class="basement-details">
+              <summary>Basement Node (Local / Custom OpenAI URL)</summary>
+              <div class="basement-grid">
+                <label class="field">
+                  <span>Custom / Local STT URL</span>
+                  <input class="input mono" name="localSttUrl" type="url" placeholder="http://localhost:8080/v1/audio/transcriptions" />
+                </label>
+                <label class="field">
+                  <span>Custom / Local LLM URL</span>
+                  <input class="input mono" name="localLlmUrl" type="url" placeholder="http://localhost:11434/v1/chat/completions" />
+                </label>
+                <label class="field">
+                  <span>Bearer Token (optional)</span>
+                  <input class="input mono" name="key_custom" type="password" placeholder="Optional token" autocomplete="off" />
+                </label>
+              </div>
+            </details>
+          </section>
+
+          <section class="settings-section" aria-label="Per-Task Dispatch">
+            <div class="settings-section-head">
+              <h3>Per-Task Dispatch</h3>
+              <span class="settings-hint">Models load live from each vendor API. Gemini Free Tier* models carry AI Studio RPM/RPD limits.</span>
+            </div>
+
+            <div class="stage-dispatch-card">
+              <div class="stage-dispatch-head">
+                <strong>Stage 1 · STT Wiretap (Audio → Transcript)</strong>
+                <span id="sttModelsStatus" class="stage-models-status mono"></span>
+              </div>
+              <div class="stage-dispatch-grid">
+                <label class="field">
+                  <span>Vendor</span>
+                  <select id="sttVendorSelect" class="input" name="sttVendor"></select>
+                </label>
+                <div class="field">
+                  <span class="field-label-row">
+                    <span>Live API Models</span>
+                    <button id="fetchSttModelsBtn" type="button" class="btn-link">Refresh</button>
+                  </span>
+                  <select id="sttModelSelect" class="input mono" aria-label="Live STT models"></select>
+                </div>
+                <label class="field">
+                  <span>Selected Model ID</span>
+                  <input id="sttModelInput" class="input mono" name="sttModel" type="text" placeholder="openai/whisper-large-v3" />
+                </label>
+              </div>
+            </div>
+
+            <div class="stage-dispatch-card">
+              <div class="stage-dispatch-head">
+                <strong>Stage 2 · Summary &amp; Vision Lab (Slides + Text → Notes)</strong>
+                <span id="llmModelsStatus" class="stage-models-status mono"></span>
+              </div>
+              <div class="stage-dispatch-grid">
+                <label class="field">
+                  <span>Vendor</span>
+                  <select id="llmVendorSelect" class="input" name="llmVendor"></select>
+                </label>
+                <div class="field">
+                  <span class="field-label-row">
+                    <span>Live API Models</span>
+                    <button id="fetchLlmModelsBtn" type="button" class="btn-link">Refresh</button>
+                  </span>
+                  <select id="llmModelSelect" class="input mono" aria-label="Live Summary and Vision models"></select>
+                </div>
+                <label class="field">
+                  <span>Selected Model ID</span>
+                  <input id="llmModelInput" class="input mono" name="llmModel" type="text" placeholder="google/gemini-2.5-flash" />
+                </label>
+              </div>
+            </div>
+
+            <div id="openrouterRoutingBox" class="field-group routing-box" hidden>
+              <div class="field">
+                <span>OpenRouter Provider Routing Strategy</span>
+                <select name="providerRouting" id="providerRoutingSelect" hidden>
+                  <option value="auto">Default (Auto)</option>
+                  <option value="price">Cheapest (sort: price)</option>
+                  <option value="throughput">Fastest (sort: throughput)</option>
+                </select>
+                <div class="routing-cards" role="radiogroup" aria-label="Provider Routing Strategy">
+                  <button type="button" class="route-card active" data-route="auto">
+                    <strong>Default (Auto)</strong>
+                    <span>OpenRouter picks route</span>
+                  </button>
+                  <button type="button" class="route-card" data-route="price">
+                    <strong>Moritz Budget</strong>
+                    <span>Cheapest (sort: price)</span>
+                  </button>
+                  <button type="button" class="route-card" data-route="throughput">
+                    <strong>Lenny Speed</strong>
+                    <span>Fastest (throughput)</span>
+                  </button>
+                </div>
+              </div>
+
+              <label class="field">
+                <span>Preferred OpenRouter Providers (optional)</span>
+                <input class="input mono" name="preferredProviders" type="text" placeholder="e.g. relace, deepinfra" />
+              </label>
+            </div>
+
+            <div class="stage-dispatch-card">
+              <div class="stage-dispatch-head">
+                <label class="inline-check-head">
+                  <input id="setting-jev-enabled" name="jevEnabled" type="checkbox" />
+                  <strong>Stage 3 · Dan's Radar Calibration (Jev)</strong>
+                </label>
+                <span id="jevModelsStatus" class="stage-models-status mono"></span>
+              </div>
+              <div id="jevDispatchFields" class="stage-dispatch-grid" hidden>
+                <label class="field">
+                  <span>Vendor</span>
+                  <select id="jevVendorSelect" class="input" name="jevVendor"></select>
+                </label>
+                <div class="field">
+                  <span class="field-label-row">
+                    <span>Live API Models</span>
+                    <button id="fetchJevModelsBtn" type="button" class="btn-link">Refresh</button>
+                  </span>
+                  <select id="jevModelSelect" class="input mono" aria-label="Live Jev models"></select>
+                </div>
+                <label class="field">
+                  <span>Selected Model ID</span>
+                  <input id="jevModelInput" class="input mono" name="jevModel" type="text" placeholder="typesafe/jev-latest" />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section" aria-label="Capture and Relay">
+            <div class="two-col">
+              <label class="field">
+                <span>Default Course Hint</span>
+                <input class="input" name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
+              </label>
+              <label class="field">
+                <span>Dead Drop Relay URL (P2P Signaling)</span>
+                <input class="input" name="dropRelayUrl" type="url" placeholder="https://ntfy.sh" />
+              </label>
+            </div>
+
+            <div class="two-col">
+              <label class="field">
+                <span>MS Whiteboard Capture</span>
+                <select class="input" name="whiteboardMode">
+                  <option value="off">Off</option>
+                  <option value="match">Matching Meetings Only</option>
+                  <option value="always">Always On</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Whiteboard Meeting Keywords</span>
+                <input class="input" name="whiteboardMeetings" type="text" placeholder="e.g. Algebra, Calculus, Math" />
+              </label>
+            </div>
+
+            <p class="helper-note">Automatic RO/EN detection stays locked on — zero telemetry, zero server storage. Tip: on Google AI Studio Free Tier*, prompts may be reviewed by Google; switch vendor anytime per stage.</p>
+
+            <section class="update-box" aria-label="Extension updates">
+              <div class="update-box-head">
+                <div>
+                  <strong>Extension Updates</strong>
+                  <span id="updateStatusText" class="update-status mono">v0.1.3</span>
+                </div>
+                <div class="update-box-actions">
+                  <button id="checkUpdateBtn" type="button" class="btn btn-sm">Check for Updates</button>
+                  <button id="downloadUpdateBtn" type="button" class="btn btn-sm btn-primary" hidden>Download Update (.zip)</button>
+                </div>
+              </div>
+              <ol id="updateSteps" class="update-steps" hidden>
+                <li>Unzip and <strong>replace</strong> your existing <code>MyTems</code> folder (keeps all recordings &amp; settings).</li>
+                <li>Open <code>chrome://extensions</code> (or <code>edge://extensions</code>).</li>
+                <li>Click <strong>Reload</strong> (<code>↻</code>) on MyTems.</li>
+              </ol>
+            </section>
+          </section>
+        </div>
 
         <footer class="modal-foot">
           <span class="mono" style="font-size:12px;color:var(--muted);">Stored locally in extension storage</span>

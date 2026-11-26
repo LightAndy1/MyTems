@@ -22,7 +22,7 @@
             <span class="brand-sub">Clearnet Vault · $0</span>
           </div>
         </div>
-        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open Settings">
+        <button id="settingsBtn" class="icon-btn" title="Dispatch Settings" aria-label="Open Settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -37,16 +37,25 @@
           <span id="timer" class="timer" hidden>00:00</span>
         </div>
         <p id="tabTitle" class="tab-title">Detecting tab...</p>
-        <input id="courseHint" type="text" placeholder="Course hint (optional, e.g. Distributed Systems)" />
-        <label id="screenToggleRow" class="wb-toggle">
-          <input id="screenCaptureCheck" type="checkbox" checked />
-          <span>Record screen</span>
-        </label>
-        <label id="wbToggleRow" class="wb-toggle">
-          <input id="wbCaptureCheck" type="checkbox" />
-          <span>Capture MS Whiteboard</span>
-        </label>
+
+        <div id="preRecordFields" class="field-stack">
+          <input id="subjectInput" type="text" list="subjectOptions" placeholder="Subject / group (optional, e.g. Algorithms)" />
+          <datalist id="subjectOptions"></datalist>
+          <input id="courseHint" type="text" placeholder="Topic hint (optional, helps RO + EN terms)" />
+          <div class="toggle-pair">
+            <label id="screenToggleRow" class="wb-toggle">
+              <input id="screenCaptureCheck" type="checkbox" checked />
+              <span>Record screen</span>
+            </label>
+            <label id="wbToggleRow" class="wb-toggle">
+              <input id="wbCaptureCheck" type="checkbox" />
+              <span>MS Whiteboard</span>
+            </label>
+          </div>
+        </div>
+
         <button id="toggleBtn" class="primary-btn">Start Recording</button>
+        <p id="dispatchStatus" class="dispatch-status" hidden></p>
         <p id="errorMsg" class="error" role="alert" hidden></p>
       </section>
 

@@ -105,7 +105,7 @@ async function finalizeStop(result) {
   return updated;
 }
 
-async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOverride, recordScreen = true }) {
+async function handleStart({ tabId, tabTitle, streamId, subject, courseHint, whiteboardOverride, recordScreen = true }) {
   const active = await getActiveSession();
   if (active) throw new Error('Recording already in progress');
   await ensureOffscreen();
@@ -115,10 +115,12 @@ async function handleStart({ tabId, tabTitle, streamId, courseHint, whiteboardOv
   const title = deriveLectureTitle(tabTitle);
   const startedAtMs = now.getTime();
   const captureScreen = recordScreen !== false;
+  const cleanSubject = (subject || '').trim();
 
   await upsertLecture({
     id: lectureId,
     title,
+    ...(cleanSubject ? { subject: cleanSubject } : {}),
     courseHint: (courseHint || '').trim(),
     createdAt: now.toISOString(),
     startedAtMs,

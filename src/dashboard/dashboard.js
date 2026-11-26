@@ -1,4 +1,5 @@
-import { HINT_PRESETS, NOTE_MODES, WHITEBOARD_ORIGINS, resolveNoteMode } from '../shared/constants.js';
+import { AI_VENDORS, AI_VENDOR_IDS, HINT_PRESETS, NOTE_MODES, WHITEBOARD_ORIGINS, resolveNoteMode } from '../shared/constants.js';
+import { fetchVendorModels, hasVendorCredentials } from './ai-client.js';
 import {
   formatLocalDateTimeParts,
   formatTimestamp,
@@ -1047,13 +1048,17 @@ function renderStudyDesk(parts = null, seq = selectSeq) {
 
   el('copyNotionBtn').disabled = !hasNotes;
   syncZipButton(activeParts, seq);
-  el('extractSlidesBtn').textContent = partCount ? `Extract Slides (All ${partCount} Parts · $0)` : 'Extract Slides ($0)';
+  el('extractSlidesBtn').textContent = partCount ? `Slides (${partCount}p · $0)` : 'Slides ($0)';
   el('transcribeOnlyBtn').textContent = partCount
-    ? (hasTranscript ? `Re-transcribe All ${partCount} Parts ($0 LLM)` : `Transcribe All ${partCount} Parts ($0 LLM)`)
-    : (hasTranscript ? 'Re-transcribe ($0 LLM)' : 'Transcribe Only ($0 LLM)');
+    ? (hasTranscript ? `Re-transcribe (${partCount}p · $0 LLM)` : `1. Transcribe (${partCount}p · $0 LLM)`)
+    : (hasTranscript ? 'Re-transcribe ($0 LLM)' : '1. Transcribe ($0 LLM)');
   el('summarizeBtn').textContent = partCount
-    ? (hasNotes ? `Regenerate Lesson Notes (${partCount} Parts)` : `Generate Lesson Notes (${partCount} Parts)`)
-    : (hasNotes ? 'Regenerate Notes' : 'Generate Notes');
+    ? (hasNotes ? `Regenerate Notes (${partCount}p)` : `2. Cook Notes (${partCount}p)`)
+    : (hasNotes ? 'Regenerate Notes' : '2. Cook Notes & Radar');
+
+  el('transcribeOnlyBtn').classList.toggle('btn-primary', !hasTranscript && !hasNotes);
+  el('summarizeBtn').classList.toggle('btn-primary', hasTranscript && !hasNotes);
+  el('zipNotionBtn').classList.toggle('btn-primary', hasNotes);
 
   el('radarCard').hidden = !(currentNotes?.examRadar?.length);
   el('unprocessedCard').hidden = hasNotes || hasTranscript;
@@ -1191,8 +1196,6 @@ async function loadVideoPart(id, seq) {
     el('snapSlideBtn').hidden = false;
     el('downloadVideoBtn').disabled = false;
     el('downloadVideoBtn').textContent = 'Download Video (.webm)';
-    el('quickDownloadBtn').disabled = false;
-    el('quickDownloadBtn').textContent = 'Download .webm';
   } catch {
     if (seq !== selectSeq) return;
     const [lec, audioFiles] = await Promise.all([getLecture(id), listDirFiles(id, 'audio')]);
@@ -1218,10 +1221,6 @@ async function loadVideoPart(id, seq) {
     el('downloadVideoBtn').textContent = hasAudio
       ? (audioFiles.length > 1 ? 'Download Audio (.zip)' : 'Download Audio (.webm)')
       : 'Download Video (.webm)';
-    el('quickDownloadBtn').disabled = !hasAudio;
-    el('quickDownloadBtn').textContent = hasAudio
-      ? (audioFiles.length > 1 ? 'Download Audio (.zip)' : 'Download Audio (.webm)')
-      : 'Download .webm';
   }
 }
 
@@ -1252,6 +1251,7 @@ async function selectLecture(id) {
   el('noteModeSelect').value = resolveNoteMode(lec.noteMode);
   el('multiSpeakerToggle').checked = Boolean(lec.multiSpeaker);
   syncHintPresetSelect(el('lecCourseHint').value);
+  setHintRowExpanded(Boolean((lec.courseHint || '').trim()));
   renderPartSwitcher(null);
 
   const isRecording = lec.status === 'recording';
@@ -1309,6 +1309,7 @@ async function selectLesson(lessonId, focusPartId = null) {
   el('noteModeSelect').value = resolveNoteMode(part.noteMode);
   el('multiSpeakerToggle').checked = Boolean(part.multiSpeaker);
   syncHintPresetSelect(el('lecCourseHint').value);
+  setHintRowExpanded(Boolean((part.courseHint || '').trim()));
   renderPartSwitcher(lesson);
 
   const anyRecording = lesson.parts.some((p) => p.status === 'recording');
@@ -1576,7 +1577,6 @@ async function handleQuickDownload() {
   if (!ok) setBanner('No video or audio file found for this recording.', true);
 }
 
-el('quickDownloadBtn').addEventListener('click', handleQuickDownload);
 el('downloadVideoBtn').addEventListener('click', handleQuickDownload);
 
 el('freeMediaBtn').addEventListener('click', async () => {
@@ -1652,6 +1652,21 @@ el('deleteLectureBtn').addEventListener('click', async () => {
   } catch (err) {
     setBanner(err?.message || String(err), true);
   }
+});
+
+function setHintRowExpanded(expanded) {
+  const row = el('hintExtraRow');
+  const btn = el('toggleHintRowBtn');
+  if (row) row.hidden = !expanded;
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(Boolean(expanded)));
+    btn.textContent = expanded ? 'Hide Hint' : '+ Hint & Preset';
+  }
+}
+
+el('toggleHintRowBtn')?.addEventListener('click', () => {
+  const row = el('hintExtraRow');
+  setHintRowExpanded(Boolean(row?.hidden));
 });
 
 function syncHintPresetSelect(hintValue) {
@@ -1749,12 +1764,15 @@ groupForm.addEventListener('submit', async (e) => {
   }
 });
 
-el('renameLessonBtn').addEventListener('click', () => {
+function openCurrentGroupModal() {
   el('storageMenu').open = false;
   if (!selectedId) return;
   const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
   openGroupModal(lesson ? lesson.parts.map((p) => p.id) : [selectedId]);
-});
+}
+
+el('quickGroupBtn')?.addEventListener('click', openCurrentGroupModal);
+el('renameLessonBtn').addEventListener('click', openCurrentGroupModal);
 
 el('ungroupLectureBtn').addEventListener('click', async () => {
   el('storageMenu').open = false;
@@ -2064,24 +2082,52 @@ const modal = el('settingsModal');
 const form = el('settingsForm');
 const SETTING_FIELDS = [
   'aiEnabled',
-  'expertMode',
-  'openrouterApiKey',
+  'sttVendor',
   'sttModel',
+  'llmVendor',
   'llmModel',
+  'jevEnabled',
+  'jevVendor',
+  'jevModel',
   'providerRouting',
   'preferredProviders',
   'localSttUrl',
-  'localSttModel',
   'localLlmUrl',
-  'localLlmModel',
   'defaultCourseHint',
   'whiteboardMode',
   'whiteboardMeetings',
-  'jevEnabled',
   'dropRelayUrl',
 ];
-let modalMode = 'cloud';
+const STAGE_CONFIGS = [
+  { stage: 'stt', vendorEl: 'sttVendorSelect', selectEl: 'sttModelSelect', inputEl: 'sttModelInput', btnEl: 'fetchSttModelsBtn', statusEl: 'sttModelsStatus', defaultKey: 'defaultSttModel' },
+  { stage: 'llm', vendorEl: 'llmVendorSelect', selectEl: 'llmModelSelect', inputEl: 'llmModelInput', btnEl: 'fetchLlmModelsBtn', statusEl: 'llmModelsStatus', defaultKey: 'defaultLlmModel' },
+  { stage: 'jev', vendorEl: 'jevVendorSelect', selectEl: 'jevModelSelect', inputEl: 'jevModelInput', btnEl: 'fetchJevModelsBtn', statusEl: 'jevModelsStatus', defaultKey: 'defaultJevModel' },
+];
+const liveModelsCache = new Map();
 let aiEnabledState = true;
+
+for (const cfg of STAGE_CONFIGS) {
+  const vendorSelect = el(cfg.vendorEl);
+  if (!vendorSelect) continue;
+  for (const id of AI_VENDOR_IDS) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = AI_VENDORS[id].label;
+    vendorSelect.appendChild(opt);
+  }
+}
+
+function syncHeaderDispatchButton(settings) {
+  const topBtn = el('openSettingsTopBtn');
+  if (!topBtn) return;
+  if (!settings || settings.aiEnabled === false) {
+    topBtn.textContent = 'Dispatch Settings';
+    return;
+  }
+  const sttReady = hasVendorCredentials(settings, 'stt');
+  const llmReady = hasVendorCredentials(settings, 'llm');
+  topBtn.textContent = sttReady && llmReady ? 'Dispatch Settings' : 'Arm Dispatch Keys';
+}
 
 function syncAiEnabledUI(enabled) {
   aiEnabledState = enabled !== false;
@@ -2098,18 +2144,30 @@ function syncAiEnabledUI(enabled) {
   if (aiCheckbox) aiCheckbox.checked = aiEnabledState;
 }
 
-function syncExpertModeUI(expert) {
-  const section = el('expertSettingsSection');
-  if (section) section.hidden = !expert;
+function syncKeyVaultBadges() {
+  for (const id of ['openrouter', 'google', 'nvidia', 'groq']) {
+    const badge = el(`keyBadge-${id}`);
+    const val = (form.elements[`key_${id}`]?.value || '').trim();
+    if (!badge) continue;
+    badge.textContent = val ? 'Armed' : 'No Key';
+    badge.classList.toggle('is-armed', Boolean(val));
+  }
 }
 
-function syncModeUI(mode) {
-  modalMode = mode;
-  el('cloudFields').hidden = mode !== 'cloud';
-  el('localFields').hidden = mode !== 'local';
-  for (const btn of form.querySelectorAll('.seg-btn')) {
-    btn.classList.toggle('active', btn.dataset.mode === mode);
-  }
+function syncOpenRouterRoutingVisibility() {
+  const box = el('openrouterRoutingBox');
+  if (!box) return;
+  const usesOpenRouter =
+    form.elements.sttVendor?.value === 'openrouter' ||
+    form.elements.llmVendor?.value === 'openrouter' ||
+    (form.elements.jevEnabled?.checked && form.elements.jevVendor?.value === 'openrouter');
+  box.hidden = !usesOpenRouter;
+}
+
+function syncJevDispatchVisibility() {
+  const fields = el('jevDispatchFields');
+  if (fields) fields.hidden = !form.elements.jevEnabled?.checked;
+  syncOpenRouterRoutingVisibility();
 }
 
 function syncRoutingCards(route) {
@@ -2121,28 +2179,194 @@ function syncRoutingCards(route) {
   }
 }
 
+function buildDraftSettingsFromForm() {
+  const vendorKeys = {};
+  for (const id of AI_VENDOR_IDS) {
+    vendorKeys[id] = (form.elements[`key_${id}`]?.value || '').trim();
+  }
+  return {
+    aiEnabled: Boolean(form.elements.aiEnabled?.checked),
+    vendorKeys,
+    openrouterApiKey: vendorKeys.openrouter,
+    sttVendor: form.elements.sttVendor?.value || 'openrouter',
+    sttModel: (form.elements.sttModel?.value || '').trim(),
+    llmVendor: form.elements.llmVendor?.value || 'openrouter',
+    llmModel: (form.elements.llmModel?.value || '').trim(),
+    jevEnabled: Boolean(form.elements.jevEnabled?.checked),
+    jevVendor: form.elements.jevVendor?.value || 'openrouter',
+    jevModel: (form.elements.jevModel?.value || '').trim(),
+    providerRouting: form.elements.providerRouting?.value || 'auto',
+    preferredProviders: (form.elements.preferredProviders?.value || '').trim(),
+    localSttUrl: (form.elements.localSttUrl?.value || '').trim(),
+    localLlmUrl: (form.elements.localLlmUrl?.value || '').trim(),
+  };
+}
+
+function renderStageModelOptions(cfg, models) {
+  const select = el(cfg.selectEl);
+  const input = el(cfg.inputEl);
+  if (!select) return;
+  const currentVal = (input?.value || '').trim();
+  select.innerHTML = '';
+
+  const placeholderOpt = document.createElement('option');
+  placeholderOpt.value = '';
+  placeholderOpt.textContent = models.length ? `Pick from ${models.length} live models...` : 'No live models loaded';
+  select.appendChild(placeholderOpt);
+
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    const tags = [m.freeLabel, cfg.stage === 'stt' && m.supportsAudio ? 'Audio' : '', cfg.stage === 'llm' && m.supportsVision ? 'Vision' : '']
+      .filter(Boolean)
+      .join(' · ');
+    opt.textContent = tags ? `${m.id} [${tags}]` : m.id;
+    select.appendChild(opt);
+  }
+  if (currentVal && models.some((m) => m.id === currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+async function loadStageModels(cfg, { force = false } = {}) {
+  const draft = buildDraftSettingsFromForm();
+  const vendor = form.elements[`${cfg.stage}Vendor`]?.value || 'openrouter';
+  const statusEl = el(cfg.statusEl);
+  const btnEl = el(cfg.btnEl);
+  const key = draft.vendorKeys[vendor] || '';
+  const urlHint = vendor === 'custom' ? (cfg.stage === 'stt' ? draft.localSttUrl : draft.localLlmUrl) : '';
+  const cacheKey = `${vendor}:${cfg.stage}:${key.slice(-6)}:${urlHint}`;
+
+  if (!force && liveModelsCache.has(cacheKey)) {
+    const cached = liveModelsCache.get(cacheKey);
+    renderStageModelOptions(cfg, cached);
+    if (statusEl) {
+      statusEl.textContent = `${cached.length} live models`;
+      statusEl.classList.remove('is-error');
+    }
+    return cached;
+  }
+
+  if (btnEl) btnEl.disabled = true;
+  if (statusEl) {
+    statusEl.textContent = 'Loading live models...';
+    statusEl.classList.remove('is-error');
+  }
+  try {
+    const models = await fetchVendorModels({ vendor, settings: draft, stage: cfg.stage });
+    liveModelsCache.set(cacheKey, models);
+    renderStageModelOptions(cfg, models);
+    if (statusEl) {
+      statusEl.textContent = `${models.length} live models`;
+      statusEl.classList.remove('is-error');
+    }
+    return models;
+  } catch (err) {
+    renderStageModelOptions(cfg, []);
+    if (statusEl) {
+      statusEl.textContent = err?.message || String(err);
+      statusEl.classList.add('is-error');
+    }
+    return [];
+  } finally {
+    if (btnEl) btnEl.disabled = false;
+  }
+}
+
+async function syncAllActiveStageModels({ force = false } = {}) {
+  const draft = buildDraftSettingsFromForm();
+  const tasks = [];
+  for (const cfg of STAGE_CONFIGS) {
+    if (cfg.stage === 'jev' && !draft.jevEnabled) continue;
+    const vendor = draft[`${cfg.stage}Vendor`];
+    const hasCreds = vendor === 'openrouter' || (vendor === 'custom' ? Boolean(draft.localLlmUrl || draft.localSttUrl) : Boolean(draft.vendorKeys[vendor]));
+    if (hasCreds) tasks.push(loadStageModels(cfg, { force }));
+    else {
+      renderStageModelOptions(cfg, []);
+      const statusEl = el(cfg.statusEl);
+      if (statusEl) {
+        statusEl.textContent = `Add ${AI_VENDORS[vendor].label} key to fetch`;
+        statusEl.classList.remove('is-error');
+      }
+    }
+  }
+  await Promise.all(tasks);
+}
+
 async function openSettingsModal() {
   const s = await getSettings();
   for (const name of SETTING_FIELDS) {
     const field = form.elements[name];
+    if (!field) continue;
     if (field.type === 'checkbox') field.checked = name === 'aiEnabled' ? s[name] !== false : Boolean(s[name]);
     else field.value = s[name] || '';
   }
+  for (const id of AI_VENDOR_IDS) {
+    const keyField = form.elements[`key_${id}`];
+    if (keyField) keyField.value = s.vendorKeys?.[id] || '';
+  }
+  const hasCustom = s.sttVendor === 'custom' || s.llmVendor === 'custom' || Boolean(s.vendorKeys?.custom);
+  const basementDetails = el('basementNodeDetails');
+  if (basementDetails) basementDetails.open = hasCustom;
+
   syncAiEnabledUI(s.aiEnabled !== false);
-  syncExpertModeUI(Boolean(s.expertMode));
-  syncModeUI(s.providerMode);
+  syncKeyVaultBadges();
+  syncJevDispatchVisibility();
+  syncOpenRouterRoutingVisibility();
   syncRoutingCards(s.providerRouting || 'auto');
   if (!modal.open) modal.showModal();
+  syncAllActiveStageModels({ force: false }).catch(() => {});
 }
 
-form.elements.expertMode?.addEventListener('change', (e) => {
-  syncExpertModeUI(e.target.checked);
+for (const id of ['openrouter', 'google', 'nvidia', 'groq']) {
+  form.elements[`key_${id}`]?.addEventListener('input', syncKeyVaultBadges);
+}
+
+for (const cfg of STAGE_CONFIGS) {
+  const vendorSelect = el(cfg.vendorEl);
+  const modelSelect = el(cfg.selectEl);
+  const modelInput = el(cfg.inputEl);
+  const fetchBtn = el(cfg.btnEl);
+
+  vendorSelect?.addEventListener('change', () => {
+    const nextVendor = vendorSelect.value;
+    const current = (modelInput?.value || '').trim();
+    const isAnyDefault = AI_VENDOR_IDS.some((id) => AI_VENDORS[id][cfg.defaultKey] === current);
+    if ((!current || isAnyDefault) && modelInput) {
+      modelInput.value = AI_VENDORS[nextVendor]?.[cfg.defaultKey] || '';
+    }
+    syncOpenRouterRoutingVisibility();
+    loadStageModels(cfg, { force: false }).catch(() => {});
+  });
+
+  modelSelect?.addEventListener('change', () => {
+    if (modelSelect.value && modelInput) {
+      modelInput.value = modelSelect.value;
+    }
+  });
+
+  fetchBtn?.addEventListener('click', () => {
+    loadStageModels(cfg, { force: true }).catch(() => {});
+  });
+}
+
+el('syncAllModelsBtn')?.addEventListener('click', () => {
+  syncAllActiveStageModels({ force: true }).catch(() => {});
+});
+
+form.elements.jevEnabled?.addEventListener('change', () => {
+  syncJevDispatchVisibility();
+  if (form.elements.jevEnabled.checked) {
+    const jevCfg = STAGE_CONFIGS.find((c) => c.stage === 'jev');
+    if (jevCfg) loadStageModels(jevCfg, { force: false }).catch(() => {});
+  }
 });
 
 el('aiToggleBtn')?.addEventListener('click', async () => {
   const next = !aiEnabledState;
-  await saveSettings({ aiEnabled: next });
+  const saved = await saveSettings({ aiEnabled: next });
   syncAiEnabledUI(next);
+  syncHeaderDispatchButton(saved);
   renderCatalogGrid();
   setBanner(next ? 'AI enabled.' : 'AI disabled. Local recording, slides, and exports stay active.');
 });
@@ -2151,9 +2375,6 @@ for (const card of form.querySelectorAll('.route-card')) {
   card.addEventListener('click', () => syncRoutingCards(card.dataset.route));
 }
 
-for (const btn of form.querySelectorAll('.seg-btn')) {
-  btn.addEventListener('click', () => syncModeUI(btn.dataset.mode));
-}
 el('openSettingsBtn').addEventListener('click', openSettingsModal);
 el('openSettingsTopBtn')?.addEventListener('click', openSettingsModal);
 el('updatePillBtn')?.addEventListener('click', openSettingsModal);
@@ -2218,11 +2439,20 @@ el('downloadUpdateBtn')?.addEventListener('click', () => {
 });
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const patch = { providerMode: modalMode };
+  const draft = buildDraftSettingsFromForm();
+  const patch = {
+    vendorKeys: draft.vendorKeys,
+    openrouterApiKey: draft.vendorKeys.openrouter,
+    providerMode: draft.sttVendor === 'custom' && draft.llmVendor === 'custom' ? 'local' : 'cloud',
+  };
   for (const name of SETTING_FIELDS) {
     const field = form.elements[name];
+    if (!field) continue;
     patch[name] = field.type === 'checkbox' ? field.checked : field.value.trim();
   }
+  if (patch.sttVendor === 'custom' && patch.sttModel) patch.localSttModel = patch.sttModel;
+  if (patch.llmVendor === 'custom' && patch.llmModel) patch.localLlmModel = patch.llmModel;
+
   if (patch.whiteboardMode !== 'off' && chrome.permissions?.request) {
     let granted = false;
     try {
@@ -2238,8 +2468,28 @@ form.addEventListener('submit', async (e) => {
       setBanner('Whiteboard permission denied; kept Off.', true);
     }
   }
-  await saveSettings(patch);
-  syncAiEnabledUI(patch.aiEnabled !== false);
+
+  if (chrome.permissions?.request) {
+    const customUrls = [patch.localSttUrl, patch.localLlmUrl].filter(Boolean);
+    const origins = [];
+    for (const rawUrl of customUrls) {
+      try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol === 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+          origins.push(`${parsed.origin}/*`);
+        }
+      } catch {
+        // ignore invalid url syntax here
+      }
+    }
+    if (origins.length) {
+      await chrome.permissions.request({ origins: [...new Set(origins)] }).catch(() => false);
+    }
+  }
+
+  const saved = await saveSettings(patch);
+  syncAiEnabledUI(saved.aiEnabled !== false);
+  syncHeaderDispatchButton(saved);
   renderCatalogGrid();
   modal.close();
 });
@@ -2514,6 +2764,7 @@ window.addEventListener('hashchange', () => {
 async function init() {
   const settings = await getSettings();
   syncAiEnabledUI(settings.aiEnabled !== false);
+  syncHeaderDispatchButton(settings);
   const contexts = chrome.runtime?.getContexts
     ? await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
     : [];

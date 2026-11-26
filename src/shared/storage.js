@@ -1,4 +1,54 @@
-import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants.js';
+import { AI_VENDOR_IDS, DEFAULT_SETTINGS, DEFAULT_VENDOR_KEYS, STORAGE_KEYS } from './constants.js';
+
+function pickVendor(value, fallback) {
+  return AI_VENDOR_IDS.includes(value) ? value : fallback;
+}
+
+/**
+ * Normalize legacy and per-task AI settings into one consistent shape.
+ */
+export function normalizeSettings(raw = {}) {
+  const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
+  const rawKeys = raw?.vendorKeys && typeof raw.vendorKeys === 'object' ? raw.vendorKeys : {};
+  const openrouterKey = String(rawKeys.openrouter ?? merged.openrouterApiKey ?? '').trim();
+  const vendorKeys = {
+    ...DEFAULT_VENDOR_KEYS,
+    ...rawKeys,
+    openrouter: openrouterKey,
+  };
+  for (const id of AI_VENDOR_IDS) {
+    vendorKeys[id] = String(vendorKeys[id] || '').trim();
+  }
+
+  const legacyLocal = !raw?.sttVendor && !raw?.llmVendor && raw?.providerMode === 'local';
+  const sttVendor = pickVendor(raw?.sttVendor, legacyLocal ? 'custom' : 'openrouter');
+  const llmVendor = pickVendor(raw?.llmVendor, legacyLocal ? 'custom' : 'openrouter');
+  const jevVendor = pickVendor(raw?.jevVendor, 'openrouter');
+
+  const sttModel =
+    raw?.sttModel !== undefined
+      ? String(raw.sttModel)
+      : sttVendor === 'custom'
+        ? String(merged.localSttModel || DEFAULT_SETTINGS.localSttModel)
+        : DEFAULT_SETTINGS.sttModel;
+  const llmModel =
+    raw?.llmModel !== undefined
+      ? String(raw.llmModel)
+      : llmVendor === 'custom'
+        ? String(merged.localLlmModel || DEFAULT_SETTINGS.localLlmModel)
+        : DEFAULT_SETTINGS.llmModel;
+
+  return {
+    ...merged,
+    openrouterApiKey: openrouterKey,
+    vendorKeys,
+    sttVendor,
+    sttModel,
+    llmVendor,
+    llmModel,
+    jevVendor,
+  };
+}
 
 export function createStorage(area) {
   let writeQueue = Promise.resolve();
@@ -11,12 +61,28 @@ export function createStorage(area) {
 
   async function getSettings() {
     const res = await area.get(STORAGE_KEYS.SETTINGS);
-    return { ...DEFAULT_SETTINGS, ...(res[STORAGE_KEYS.SETTINGS] || {}) };
+    return normalizeSettings(res[STORAGE_KEYS.SETTINGS]);
   }
 
   function saveSettings(patch) {
     return enqueueWrite(async () => {
-      const next = { ...(await getSettings()), ...patch };
+      const current = await getSettings();
+      const nextRaw = { ...current, ...(patch || {}) };
+      if (patch?.vendorKeys) {
+        nextRaw.vendorKeys = { ...current.vendorKeys, ...patch.vendorKeys };
+        if (patch.vendorKeys.openrouter !== undefined) {
+          nextRaw.openrouterApiKey = patch.vendorKeys.openrouter;
+        }
+      } else if (patch?.openrouterApiKey !== undefined) {
+        nextRaw.vendorKeys = { ...current.vendorKeys, openrouter: patch.openrouterApiKey };
+      }
+      if (patch?.sttVendor === 'custom' && patch?.localSttModel && !patch?.sttModel) {
+        nextRaw.sttModel = patch.localSttModel;
+      }
+      if (patch?.llmVendor === 'custom' && patch?.localLlmModel && !patch?.llmModel) {
+        nextRaw.llmModel = patch.localLlmModel;
+      }
+      const next = normalizeSettings(nextRaw);
       await area.set({ [STORAGE_KEYS.SETTINGS]: next });
       return next;
     });

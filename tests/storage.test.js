@@ -37,6 +37,19 @@ describe('storage index and crash recovery', () => {
     const updated = await s.getSettings();
     assert.equal(updated.providerMode, 'local');
     assert.equal(updated.openrouterApiKey, 'sk-test');
+    assert.equal(updated.vendorKeys.openrouter, 'sk-test');
+
+    await s.saveSettings({
+      sttVendor: 'groq',
+      llmVendor: 'google',
+      vendorKeys: { groq: 'gsk-123', google: 'AIza-456' },
+    });
+    const multi = await s.getSettings();
+    assert.equal(multi.sttVendor, 'groq');
+    assert.equal(multi.llmVendor, 'google');
+    assert.equal(multi.vendorKeys.openrouter, 'sk-test');
+    assert.equal(multi.vendorKeys.groq, 'gsk-123');
+    assert.equal(multi.vendorKeys.google, 'AIza-456');
 
     await s.upsertLecture({ id: '1', title: 'Old', createdAt: '2026-11-16T10:00:00Z', status: 'ready' });
     await s.upsertLecture({ id: '2', title: 'New', createdAt: '2026-11-17T10:00:00Z', status: 'recorded' });

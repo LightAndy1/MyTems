@@ -7,6 +7,70 @@ export const STORAGE_KEYS = {
 export const OPENROUTER_URLS = {
   TRANSCRIPTIONS: 'https://openrouter.ai/api/v1/audio/transcriptions',
   CHAT: 'https://openrouter.ai/api/v1/chat/completions',
+  MODELS: 'https://openrouter.ai/api/v1/models',
+};
+
+export const AI_VENDORS = {
+  openrouter: {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    keyPlaceholder: 'sk-or-v1-...',
+    requiresKey: true,
+    defaultSttModel: 'openai/whisper-large-v3',
+    defaultLlmModel: 'google/gemini-2.5-flash',
+    defaultJevModel: 'typesafe/jev-latest',
+  },
+  google: {
+    id: 'google',
+    label: 'Google AI Studio',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    keyPlaceholder: 'AIza...',
+    requiresKey: true,
+    defaultSttModel: 'gemini-3.5-flash',
+    defaultLlmModel: 'gemini-3.5-flash',
+    defaultJevModel: 'gemini-3.5-flash-lite',
+  },
+  nvidia: {
+    id: 'nvidia',
+    label: 'NVIDIA NIM',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    keyPlaceholder: 'nvapi-...',
+    requiresKey: true,
+    defaultSttModel: 'nvidia/nemotron-transcribe',
+    defaultLlmModel: 'meta/llama-3.2-90b-vision-instruct',
+    defaultJevModel: 'meta/llama-3.1-8b-instruct',
+  },
+  groq: {
+    id: 'groq',
+    label: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    keyPlaceholder: 'gsk_...',
+    requiresKey: true,
+    defaultSttModel: 'whisper-large-v3-turbo',
+    defaultLlmModel: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    defaultJevModel: 'llama-3.1-8b-instant',
+  },
+  custom: {
+    id: 'custom',
+    label: 'Basement Node (Local / Custom)',
+    baseUrl: 'http://localhost:11434/v1',
+    keyPlaceholder: 'Optional bearer token',
+    requiresKey: false,
+    defaultSttModel: 'whisper-1',
+    defaultLlmModel: 'qwen2.5vl:7b',
+    defaultJevModel: 'qwen2.5vl:7b',
+  },
+};
+
+export const AI_VENDOR_IDS = Object.keys(AI_VENDORS);
+
+export const DEFAULT_VENDOR_KEYS = {
+  openrouter: '',
+  google: '',
+  nvidia: '',
+  groq: '',
+  custom: '',
 };
 
 export const DEFAULT_SETTINGS = {
@@ -14,8 +78,14 @@ export const DEFAULT_SETTINGS = {
   expertMode: false,
   providerMode: 'cloud',
   openrouterApiKey: '',
+  vendorKeys: { ...DEFAULT_VENDOR_KEYS },
+  sttVendor: 'openrouter',
   sttModel: 'openai/whisper-large-v3',
+  llmVendor: 'openrouter',
   llmModel: 'google/gemini-2.5-flash',
+  jevEnabled: false,
+  jevVendor: 'openrouter',
+  jevModel: 'typesafe/jev-latest',
   providerRouting: 'auto',
   preferredProviders: '',
   localSttUrl: 'http://localhost:8080/v1/audio/transcriptions',
@@ -26,8 +96,6 @@ export const DEFAULT_SETTINGS = {
   recordScreen: true,
   whiteboardMode: 'off',
   whiteboardMeetings: '',
-  jevEnabled: false,
-  jevModel: 'typesafe/jev-latest',
   dropRelayUrl: 'https://ntfy.sh',
 };
 

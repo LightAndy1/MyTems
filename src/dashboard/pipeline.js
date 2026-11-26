@@ -11,7 +11,13 @@ import {
   writeLessonJson,
 } from '../shared/opfs.js';
 import { extractSlidesFromVideo } from './slides.js';
-import { blobToDataUrl, calibrateExamRadarWithJev, generateStructuredNotes, transcribeAudioSegment } from './ai-client.js';
+import {
+  blobToDataUrl,
+  calibrateExamRadarWithJev,
+  generateStructuredNotes,
+  hasVendorCredentials,
+  transcribeAudioSegment,
+} from './ai-client.js';
 
 const DEFAULT_DEPS = {
   getLecture,
@@ -31,7 +37,7 @@ const DEFAULT_DEPS = {
 };
 
 async function maybeCalibrateExamRadar({ examRadar, summary, settings, resolvedDeps }) {
-  if (!settings?.jevEnabled || !settings?.openrouterApiKey || !Array.isArray(examRadar) || examRadar.length === 0) {
+  if (!settings?.jevEnabled || !hasVendorCredentials(settings, 'jev') || !Array.isArray(examRadar) || examRadar.length === 0) {
     return { items: Array.isArray(examRadar) ? examRadar : [], costUsd: 0 };
   }
   try {

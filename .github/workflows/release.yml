@@ -14,7 +14,19 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Run tests
+        run: bun test
+
   release:
+    needs: test
     if: >-
       github.actor != 'github-actions[bot]' &&
       !contains(github.event.head_commit.message, '[skip ci]') &&
@@ -26,9 +38,6 @@ jobs:
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
-
-      - name: Run tests
-        run: bun test
 
       - name: Resolve and bump version
         id: ver

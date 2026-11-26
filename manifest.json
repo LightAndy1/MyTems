@@ -12,6 +12,9 @@
   ],
   "host_permissions": [
     "https://openrouter.ai/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://integrate.api.nvidia.com/*",
+    "https://api.groq.com/*",
     "https://ntfy.sh/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
@@ -23,7 +26,8 @@
     "https://teams.microsoft.com/*",
     "https://teams.cloud.microsoft/*",
     "https://whiteboard.office.com/*",
-    "https://*.whiteboard.microsoft.com/*"
+    "https://*.whiteboard.microsoft.com/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "src/background/background.js",

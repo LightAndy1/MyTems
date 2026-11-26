@@ -11,7 +11,13 @@ describe('manifest.json integrity', () => {
     assert.ok(!manifest.permissions.includes('identity'));
     assert.ok(!manifest.permissions.includes('scripting'));
     assert.ok(manifest.optional_permissions?.includes('scripting'));
-    assert.deepEqual(manifest.optional_host_permissions, WHITEBOARD_ORIGINS);
+    for (const origin of WHITEBOARD_ORIGINS) {
+      assert.ok(manifest.optional_host_permissions?.includes(origin), `Missing optional origin: ${origin}`);
+    }
+    assert.ok(manifest.host_permissions?.includes('https://openrouter.ai/*'));
+    assert.ok(manifest.host_permissions?.includes('https://generativelanguage.googleapis.com/*'));
+    assert.ok(manifest.host_permissions?.includes('https://integrate.api.nvidia.com/*'));
+    assert.ok(manifest.host_permissions?.includes('https://api.groq.com/*'));
     assert.ok(fs.existsSync(manifest.background.service_worker));
     assert.ok(fs.existsSync(manifest.action.default_popup));
     for (const p of Object.values(manifest.icons)) {

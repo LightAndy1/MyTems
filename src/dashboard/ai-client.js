@@ -78,6 +78,7 @@ export function parseNotesJson(rawText) {
  * Intentionally omits any `language` field so Whisper auto-detects RO/EN.
  */
 export async function transcribeAudioSegment({ settings, blob, filename, prompt = '', fetchImpl = fetch }) {
+  if (settings?.aiEnabled === false) throw new Error('AI is disabled in Settings.');
   const isLocal = settings.providerMode === 'local';
   const trimmedPrompt = String(prompt || '').trim();
   let res;
@@ -157,6 +158,7 @@ export function buildOpenRouterProviderConfig(settings) {
  * Generate structured study notes and Exam Radar JSON from multimodal chat messages.
  */
 export async function generateStructuredNotes({ settings, messages, fetchImpl = fetch }) {
+  if (settings?.aiEnabled === false) throw new Error('AI is disabled in Settings.');
   const isLocal = settings.providerMode === 'local';
   const url = isLocal ? settings.localLlmUrl : OPENROUTER_URLS.CHAT;
   const headers = { 'Content-Type': 'application/json' };
@@ -199,7 +201,7 @@ export async function calibrateExamRadarWithJev(items, transcriptSummary, settin
   if (!Array.isArray(items) || items.length === 0) {
     return { items: Array.isArray(items) ? items : [], costUsd: 0 };
   }
-  if (!settings?.openrouterApiKey) {
+  if (settings?.aiEnabled === false || !settings?.openrouterApiKey) {
     return { items, costUsd: 0 };
   }
 

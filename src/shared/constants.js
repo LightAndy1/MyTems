@@ -10,6 +10,8 @@ export const OPENROUTER_URLS = {
 };
 
 export const DEFAULT_SETTINGS = {
+  aiEnabled: true,
+  expertMode: false,
   providerMode: 'cloud',
   openrouterApiKey: '',
   sttModel: 'openai/whisper-large-v3',

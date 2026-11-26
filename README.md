@@ -47,7 +47,7 @@ When the extension notifies you of a new version (or via **Settings → Check fo
    git clone https://github.com/LightAndy1/MyTems.git
    ```
 2. Open `chrome://extensions` (or `helium://extensions`) in your Chromium-based browser, enable **Developer mode**, and **Load unpacked** on the cloned `MyTems` directory.
-3. To publish a new release zip for colleagues: bump `"version"` in `manifest.json`, commit, and push a matching tag (`git tag v0.2.0 && git push --tags`). GitHub Actions will run tests and attach `mytems.zip` to a new GitHub Release.
+3. Every push to `main` automatically runs `bun test`, bumps the patch version in `manifest.json`, tags `vX.Y.Z`, and publishes `mytems.zip` to GitHub Releases. (To ship a minor/major bump, update `"version"` in `manifest.json` before pushing; add `[skip release]` to a commit message to skip releasing.)
 
 ## Development & Testing
 

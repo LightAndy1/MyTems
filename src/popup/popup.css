@@ -269,6 +269,41 @@ input::placeholder {
   font-size: 12px;
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.update-banner[hidden] {
+  display: none;
+}
+
+.update-banner-text {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.update-banner-btn {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 7px;
+  padding: 4px 9px;
+  font: 600 11.5px/1.2 inherit;
+  cursor: pointer;
+}
+
+.update-banner-btn:hover {
+  background: var(--accent-hover);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

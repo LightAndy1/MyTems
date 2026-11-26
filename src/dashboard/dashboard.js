@@ -21,6 +21,7 @@ import {
   saveSettings,
   updateLectures,
 } from '../shared/storage.js';
+import { checkForUpdates, getInstalledVersion } from '../shared/updater.js';
 import {
   deleteLectureDir,
   deleteLectureFile,
@@ -2062,7 +2063,66 @@ for (const btn of form.querySelectorAll('.seg-btn')) {
 }
 el('openSettingsBtn').addEventListener('click', openSettingsModal);
 el('openSettingsTopBtn')?.addEventListener('click', openSettingsModal);
+el('updatePillBtn')?.addEventListener('click', openSettingsModal);
 el('closeSettingsBtn').addEventListener('click', () => modal.close());
+
+let latestUpdateState = null;
+
+function renderUpdateState(res) {
+  latestUpdateState = res || null;
+  const pillBtn = el('updatePillBtn');
+  const statusEl = el('updateStatusText');
+  const downloadBtn = el('downloadUpdateBtn');
+  const stepsEl = el('updateSteps');
+  const installed = getInstalledVersion();
+
+  if (res?.hasUpdate && res.latestVersion) {
+    if (pillBtn) {
+      pillBtn.textContent = `Update v${res.latestVersion}`;
+      pillBtn.hidden = false;
+    }
+    if (statusEl) statusEl.textContent = `v${installed} installed · v${res.latestVersion} available`;
+    if (downloadBtn) {
+      downloadBtn.textContent = `Download v${res.latestVersion} (.zip)`;
+      downloadBtn.hidden = false;
+    }
+    if (stepsEl) stepsEl.hidden = false;
+    return;
+  }
+
+  if (pillBtn) pillBtn.hidden = true;
+  if (downloadBtn) downloadBtn.hidden = true;
+  if (stepsEl) stepsEl.hidden = true;
+  if (statusEl) {
+    if (res?.ok) statusEl.textContent = `v${installed} · Up to date`;
+    else if (res?.error) statusEl.textContent = `v${installed} · ${res.error}`;
+    else statusEl.textContent = `v${installed}`;
+  }
+}
+
+async function runUpdateCheck(force = false) {
+  const checkBtn = el('checkUpdateBtn');
+  const statusEl = el('updateStatusText');
+  if (force && checkBtn) checkBtn.disabled = true;
+  if (force && statusEl) statusEl.textContent = `v${getInstalledVersion()} · Checking...`;
+  try {
+    const res = await checkForUpdates({ force });
+    renderUpdateState(res);
+  } finally {
+    if (checkBtn) checkBtn.disabled = false;
+  }
+}
+
+el('checkUpdateBtn')?.addEventListener('click', () => {
+  runUpdateCheck(true).catch(() => {});
+});
+
+el('downloadUpdateBtn')?.addEventListener('click', () => {
+  const url = latestUpdateState?.downloadUrl;
+  if (!url) return;
+  if (chrome.tabs?.create) chrome.tabs.create({ url });
+  else window.open(url, '_blank', 'noopener');
+});
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const patch = { providerMode: modalMode };
@@ -2370,6 +2430,7 @@ async function init() {
   }
   switchStoreView('catalog');
   if (location.hash === '#settings') await openSettingsModal();
+  runUpdateCheck(false).catch(() => {});
 }
 
 if (typeof chrome !== 'undefined' && chrome.storage?.local) {

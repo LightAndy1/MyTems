@@ -65,6 +65,7 @@
           </div>
 
           <div class="header-controls">
+            <button id="updatePillBtn" class="btn btn-sm btn-update" type="button" hidden>Update Ready</button>
             <button id="toggleRailBtn" class="btn btn-sm" type="button" hidden>Hide Library</button>
             <button id="themeToggleBtn" class="btn btn-sm" type="button">Darknet Mode</button>
             <button id="openSettingsTopBtn" class="btn btn-sm btn-primary" type="button">Dispatch Settings</button>
@@ -400,6 +401,24 @@
         </div>
 
         <p class="helper-note">Automatic RO/EN detection stays locked on — zero telemetry, zero server storage. Tip: for GLM-5.3-Flash, pick Moritz Budget or list a provider slug.</p>
+
+        <section class="update-box" aria-label="Extension updates">
+          <div class="update-box-head">
+            <div>
+              <strong>Extension Updates</strong>
+              <span id="updateStatusText" class="update-status mono">v0.1.0</span>
+            </div>
+            <div class="update-box-actions">
+              <button id="checkUpdateBtn" type="button" class="btn btn-sm">Check for Updates</button>
+              <button id="downloadUpdateBtn" type="button" class="btn btn-sm btn-primary" hidden>Download Update (.zip)</button>
+            </div>
+          </div>
+          <ol id="updateSteps" class="update-steps" hidden>
+            <li>Unzip and <strong>replace</strong> your existing <code>MyTems</code> folder (keeps all recordings &amp; settings).</li>
+            <li>Open <code>chrome://extensions</code> (or <code>edge://extensions</code>).</li>
+            <li>Click <strong>Reload</strong> (<code>↻</code>) on MyTems.</li>
+          </ol>
+        </section>
 
         <footer class="modal-foot">
           <span class="mono" style="font-size:12px;color:var(--muted);">Stored locally in extension storage</span>

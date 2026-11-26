@@ -1,6 +1,7 @@
 import { WHITEBOARD_ORIGINS } from '../shared/constants.js';
 import { deriveLectureTitle, formatTimestamp } from '../shared/sanitize.js';
 import { getActiveSession, getSettings, saveSettings } from '../shared/storage.js';
+import { checkForUpdates } from '../shared/updater.js';
 import { shouldEnableWhiteboard } from '../shared/whiteboard.js';
 
 const tabTitleEl = document.getElementById('tabTitle');
@@ -16,6 +17,9 @@ const toggleBtn = document.getElementById('toggleBtn');
 const errorEl = document.getElementById('errorMsg');
 const dashboardBtn = document.getElementById('dashboardBtn');
 const settingsBtn = document.getElementById('settingsBtn');
+const updateBannerEl = document.getElementById('updateBanner');
+const updateBannerTextEl = document.getElementById('updateBannerText');
+const updateBannerBtn = document.getElementById('updateBannerBtn');
 
 let currentTab = null;
 let timerInterval = null;
@@ -70,6 +74,14 @@ async function init() {
     filterCsv: settings.whiteboardMeetings,
   });
   renderSession(session);
+  checkForUpdates({ force: false })
+    .then((res) => {
+      if (res?.hasUpdate && res.latestVersion) {
+        updateBannerTextEl.textContent = `Update v${res.latestVersion} ready`;
+        updateBannerEl.hidden = false;
+      }
+    })
+    .catch(() => {});
 }
 
 screenCaptureCheckEl.addEventListener('change', () => {
@@ -120,5 +132,6 @@ function openDashboard(hash = '') {
 
 dashboardBtn.addEventListener('click', () => openDashboard(''));
 settingsBtn.addEventListener('click', () => openDashboard('#settings'));
+updateBannerBtn?.addEventListener('click', () => openDashboard('#settings'));
 
 init().catch((err) => setError(err?.message || String(err)));

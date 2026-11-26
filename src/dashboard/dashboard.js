@@ -20,6 +20,7 @@ import {
   recoverStaleRecordings,
   saveSettings,
   updateLectures,
+  upsertLecture,
 } from '../shared/storage.js';
 import { checkForUpdates, getInstalledVersion } from '../shared/updater.js';
 import {
@@ -29,11 +30,13 @@ import {
   freeLectureMedia,
   getLectureMediaBytes,
   listDirFiles,
+  openLectureWritable,
   readLectureFile,
   readLectureJson,
   readLessonJson,
   writeLectureFile,
 } from '../shared/opfs.js';
+import { createDropModalController } from './drop-modal.js';
 import { notesToNotionMarkdown } from '../shared/notion.js';
 import {
   buildExportZipPayload,
@@ -899,7 +902,13 @@ function renderCatalogGrid() {
         });
       }
 
-      foot.append(openBtn, quickBtn);
+      const shareBtn = document.createElement('button');
+      shareBtn.type = 'button';
+      shareBtn.className = 'btn btn-sm';
+      shareBtn.textContent = 'Share';
+      shareBtn.addEventListener('click', () => dropModalCtrl.openShareModal(lesson.parts));
+
+      foot.append(openBtn, quickBtn, shareBtn);
       card.append(top, foot);
       grid.appendChild(card);
       rendered += 1;
@@ -1764,6 +1773,46 @@ el('batchClearBtn').addEventListener('click', () => {
   renderLectureList();
 });
 
+const dropModalCtrl = createDropModalController({
+  el,
+  getSettings,
+  listLectures,
+  upsertLecture,
+  readLectureFile,
+  listDirFiles,
+  openLectureWritable,
+  writeLectureFile,
+  onImported: async (imported, skipped) => {
+    await renderLectureList();
+    if (imported.length > 0) {
+      switchStoreView('workbench');
+      await selectLecture(imported[0].id);
+    }
+    const skipText = skipped.length ? ` (${skipped.length} duplicate skipped)` : '';
+    setBanner(`Imported ${imported.length} drop part(s) into OPFS Vault${skipText}.`);
+  },
+});
+
+el('receiveDropBtn')?.addEventListener('click', () => dropModalCtrl.openReceiveModal());
+el('shareDropBtn')?.addEventListener('click', async () => {
+  if (!selectedId) return;
+  const lesson = activeViewMode === 'lesson' && activeLessonId ? libraryTree.lessonsById.get(activeLessonId) : null;
+  if (lesson?.parts?.length) {
+    await dropModalCtrl.openShareModal(lesson.parts);
+    return;
+  }
+  const lec = await getLecture(selectedId);
+  if (lec) await dropModalCtrl.openShareModal([lec]);
+});
+el('batchShareDropBtn')?.addEventListener('click', async () => {
+  const parts = [];
+  for (const id of checkedIds) {
+    const lec = await getLecture(id);
+    if (lec) parts.push(lec);
+  }
+  if (parts.length) await dropModalCtrl.openShareModal(parts);
+});
+
 el('batchDownloadBtn').addEventListener('click', () =>
   downloadLecturesSequentially([...checkedIds], 'video')
 );
@@ -2021,6 +2070,7 @@ const SETTING_FIELDS = [
   'whiteboardMode',
   'whiteboardMeetings',
   'jevEnabled',
+  'dropRelayUrl',
 ];
 let modalMode = 'cloud';
 

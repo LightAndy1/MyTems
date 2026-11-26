@@ -66,6 +66,7 @@
 
           <div class="header-controls">
             <button id="updatePillBtn" class="btn btn-sm btn-update" type="button" hidden>Update Ready</button>
+            <button id="receiveDropBtn" class="btn btn-sm" type="button">Receive Drop</button>
             <button id="toggleRailBtn" class="btn btn-sm" type="button" hidden>Hide Library</button>
             <button id="themeToggleBtn" class="btn btn-sm" type="button">Darknet Mode</button>
             <button id="openSettingsTopBtn" class="btn btn-sm btn-primary" type="button">Dispatch Settings</button>
@@ -112,6 +113,7 @@
                 <button id="batchClearBtn" class="btn btn-sm" type="button">Clear</button>
               </div>
               <div class="batch-actions">
+                <button id="batchShareDropBtn" class="btn btn-sm" type="button">Share Drop</button>
                 <button id="batchDownloadBtn" class="btn btn-sm" type="button">Download</button>
                 <button id="batchZipBtn" class="btn btn-sm" type="button">Export .zips</button>
                 <button id="batchGroupBtn" class="btn btn-sm" type="button">Group / Move</button>
@@ -171,6 +173,7 @@
                   <button id="copyNotionBtn" class="btn btn-sm" disabled>Copy Notion MD</button>
                   <button id="zipNotionBtn" class="btn btn-sm" disabled>Export .zip</button>
                   <button id="quickDownloadBtn" class="btn btn-sm" type="button">Download .webm</button>
+                  <button id="shareDropBtn" class="btn btn-sm" type="button">Share Drop</button>
 
                   <details id="storageMenu" class="menu-wrap">
                     <summary class="btn btn-sm btn-icon" title="Storage &amp; file actions" aria-label="Storage and file actions">
@@ -380,10 +383,16 @@
           </div>
         </div>
 
-        <label class="field">
-          <span>Default Course Hint</span>
-          <input class="input" name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
-        </label>
+        <div class="two-col">
+          <label class="field">
+            <span>Default Course Hint</span>
+            <input class="input" name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
+          </label>
+          <label class="field">
+            <span>Drop Relay URL (P2P Signaling)</span>
+            <input class="input" name="dropRelayUrl" type="url" placeholder="https://ntfy.sh" />
+          </label>
+        </div>
 
         <div class="two-col">
           <label class="field">
@@ -485,6 +494,124 @@
     </dialog>
 
     <div id="libraryContextMenu" class="menu-panel context-menu" role="menu" hidden></div>
+
+    <!-- Share / Package Drop Modal -->
+    <dialog id="shareDropModal" class="modal" style="max-width:560px;" aria-labelledby="shareDropTitle">
+      <div class="modal-card cmd-modal">
+        <header class="modal-head">
+          <div class="modal-title-wrap">
+            <h3 id="shareDropTitle">Dead Drop Dispatch</h3>
+            <span class="count-label mono">OPFS Vault · Zero Server Storage</span>
+          </div>
+          <button id="closeShareDropBtn" type="button" class="btn btn-sm btn-icon" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </header>
+
+        <div class="drop-section">
+          <div class="drop-section-head">
+            <span class="drop-section-label">1. Select Drops / Parts</span>
+            <div class="drop-section-links">
+              <button id="shareSelectAllBtn" type="button" class="btn-link">All</button>
+              <button id="shareSelectNoneBtn" type="button" class="btn-link">None</button>
+            </div>
+          </div>
+          <div id="sharePartsList" class="drop-checklist"></div>
+        </div>
+
+        <div class="drop-section">
+          <div class="drop-section-head">
+            <span class="drop-section-label">2. Select Layers</span>
+            <span id="shareTotalSize" class="mono drop-total-pill">Payload: 0 B</span>
+          </div>
+          <div id="shareLayersList" class="drop-checklist"></div>
+        </div>
+
+        <div id="shareCodeBox" class="drop-code-box" hidden>
+          <div class="drop-code-row">
+            <div>
+              <span class="drop-section-label">Live P2P Drop Code</span>
+              <div id="shareCodeValue" class="drop-code-value mono">---- ----</div>
+            </div>
+            <div class="drop-code-actions">
+              <button id="copyDropCodeBtn" type="button" class="btn btn-sm">Copy Code</button>
+              <button id="stopDropDispatchBtn" type="button" class="btn btn-sm btn-danger-outline">Stop</button>
+            </div>
+          </div>
+          <p id="sharePeerStatus" class="drop-peer-status mono">Waiting for colleagues on Basement Relay...</p>
+        </div>
+
+        <p id="shareDropError" class="drop-error" hidden></p>
+
+        <footer class="modal-foot">
+          <button id="exportMytemsBtn" type="button" class="btn">Export .mytems</button>
+          <button id="generateDropCodeBtn" type="button" class="btn btn-primary">Generate P2P Drop Code</button>
+        </footer>
+      </div>
+    </dialog>
+
+    <!-- Receive / Import Drop Modal -->
+    <dialog id="receiveDropModal" class="modal" style="max-width:520px;" aria-labelledby="receiveDropTitle">
+      <div class="modal-card cmd-modal">
+        <header class="modal-head">
+          <div class="modal-title-wrap">
+            <h3 id="receiveDropTitle">Receive Colleague Drop</h3>
+            <span class="count-label mono">P2P Drop Code or .mytems File</span>
+          </div>
+          <button id="closeReceiveDropBtn" type="button" class="btn btn-sm btn-icon" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </header>
+
+        <div class="drop-section">
+          <span class="drop-section-label">Paste P2P Drop Code</span>
+          <div class="drop-input-row">
+            <input id="receiveCodeInput" class="input mono" type="text" placeholder="e.g. BUBA-4829" maxlength="12" autocomplete="off" />
+            <button id="lookupDropCodeBtn" type="button" class="btn btn-primary">Check Drop</button>
+          </div>
+        </div>
+
+        <div class="drop-divider"><span>or import local bundle</span></div>
+
+        <div class="drop-section">
+          <input id="receiveFileInput" type="file" accept=".mytems,.zip" hidden />
+          <button id="pickDropFileBtn" type="button" class="btn" style="width:100%;">Choose .mytems / .zip File...</button>
+        </div>
+
+        <div id="receivePreviewBox" class="drop-preview-box" hidden>
+          <div class="drop-preview-head">
+            <strong id="receivePreviewTitle">Drop Preview</strong>
+            <span id="receivePreviewSize" class="badge badge-ready mono">0 B</span>
+          </div>
+          <p id="receivePreviewMeta" class="drop-preview-meta mono"></p>
+          <ul id="receivePreviewList" class="drop-preview-list"></ul>
+          <label id="receiveDupRow" class="field" hidden>
+            <span>Duplicate Drops Detected</span>
+            <select id="receiveDupSelect" class="input">
+              <option value="copy">Keep as Copy (new local ID)</option>
+              <option value="overwrite">Overwrite Existing Local Drop</option>
+              <option value="skip">Skip Duplicates</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="receiveProgressWrap" class="drop-progress-wrap" hidden>
+          <div class="drop-progress-bar"><div id="receiveProgressFill" class="drop-progress-fill"></div></div>
+          <span id="receiveProgressText" class="mono drop-peer-status">0 B / 0 B</span>
+        </div>
+
+        <p id="receiveDropError" class="drop-error" hidden></p>
+
+        <footer class="modal-foot">
+          <span class="mono" style="font-size:12px;color:var(--muted);">Imported straight to OPFS Vault</span>
+          <button id="confirmReceiveBtn" type="button" class="btn btn-primary" disabled>Pull Drop</button>
+        </footer>
+      </div>
+    </dialog>
 
     <script type="module" src="./dashboard.js"></script>
   </body>

@@ -68,6 +68,7 @@
             <button id="updatePillBtn" class="btn btn-sm btn-update" type="button" hidden>Update Ready</button>
             <button id="receiveDropBtn" class="btn btn-sm" type="button">Receive Drop</button>
             <button id="toggleRailBtn" class="btn btn-sm" type="button" hidden>Hide Library</button>
+            <button id="aiToggleBtn" class="btn btn-sm" type="button" aria-pressed="true">AI: On</button>
             <button id="themeToggleBtn" class="btn btn-sm" type="button">Darknet Mode</button>
             <button id="openSettingsTopBtn" class="btn btn-sm btn-primary" type="button">Dispatch Settings</button>
           </div>
@@ -316,6 +317,18 @@
           </button>
         </header>
 
+        <div class="two-col">
+          <label class="checkbox-field">
+            <input id="setting-ai-enabled" name="aiEnabled" type="checkbox" checked />
+            <span>Enable AI (Transcription &amp; Notes)</span>
+          </label>
+          <label class="checkbox-field">
+            <input id="setting-expert-mode" name="expertMode" type="checkbox" />
+            <span>Expert Mode (API keys, models &amp; routing)</span>
+          </label>
+        </div>
+
+        <div id="expertSettingsSection" class="field-group" hidden>
         <div class="segmented" role="group" aria-label="AI Provider Mode">
           <button type="button" data-mode="cloud" class="seg-btn active">Cloud Dispatch (OpenRouter)</button>
           <button type="button" data-mode="local" class="seg-btn">Local Basement Node</button>
@@ -383,16 +396,16 @@
           </div>
         </div>
 
-        <div class="two-col">
-          <label class="field">
-            <span>Default Course Hint</span>
-            <input class="input" name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
-          </label>
-          <label class="field">
-            <span>Drop Relay URL (P2P Signaling)</span>
-            <input class="input" name="dropRelayUrl" type="url" placeholder="https://ntfy.sh" />
-          </label>
+        <label class="field">
+          <span>Drop Relay URL (P2P Signaling)</span>
+          <input class="input" name="dropRelayUrl" type="url" placeholder="https://ntfy.sh" />
+        </label>
         </div>
+
+        <label class="field">
+          <span>Default Course Hint</span>
+          <input class="input" name="defaultCourseHint" type="text" placeholder="e.g. Distributed Systems" />
+        </label>
 
         <div class="two-col">
           <label class="field">

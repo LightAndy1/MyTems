@@ -893,8 +893,14 @@ function renderCatalogGrid() {
           await exportNotionZipForCurrent();
         });
       } else {
-        quickBtn.textContent = status === 'transcribed' ? 'Generate Notes' : 'Transcribe ($0)';
+        quickBtn.textContent = !aiEnabledState
+          ? 'AI Off'
+          : status === 'transcribed'
+            ? 'Generate Notes'
+            : 'Transcribe ($0)';
+        quickBtn.disabled = !aiEnabledState;
         quickBtn.addEventListener('click', async () => {
+          if (!aiEnabledState) return;
           switchStoreView('workbench');
           if (lesson.isGroup) await selectLesson(lesson.lessonId);
           else await selectLecture(lesson.parts[0].id);
@@ -1417,8 +1423,8 @@ async function runWithBusyButtons(fn) {
     await fn();
   } finally {
     el('extractSlidesBtn').disabled = false;
-    el('transcribeOnlyBtn').disabled = false;
-    el('summarizeBtn').disabled = false;
+    el('transcribeOnlyBtn').disabled = !aiEnabledState;
+    el('summarizeBtn').disabled = !aiEnabledState;
   }
 }
 
@@ -2057,6 +2063,8 @@ document.addEventListener('click', (e) => {
 const modal = el('settingsModal');
 const form = el('settingsForm');
 const SETTING_FIELDS = [
+  'aiEnabled',
+  'expertMode',
   'openrouterApiKey',
   'sttModel',
   'llmModel',
@@ -2073,6 +2081,27 @@ const SETTING_FIELDS = [
   'dropRelayUrl',
 ];
 let modalMode = 'cloud';
+let aiEnabledState = true;
+
+function syncAiEnabledUI(enabled) {
+  aiEnabledState = enabled !== false;
+  const toggleBtn = el('aiToggleBtn');
+  if (toggleBtn) {
+    toggleBtn.textContent = aiEnabledState ? 'AI: On' : 'AI: Off';
+    toggleBtn.setAttribute('aria-pressed', String(aiEnabledState));
+  }
+  const transcribeBtn = el('transcribeOnlyBtn');
+  const summarizeBtn = el('summarizeBtn');
+  if (transcribeBtn) transcribeBtn.disabled = !aiEnabledState;
+  if (summarizeBtn) summarizeBtn.disabled = !aiEnabledState;
+  const aiCheckbox = form.elements.aiEnabled;
+  if (aiCheckbox) aiCheckbox.checked = aiEnabledState;
+}
+
+function syncExpertModeUI(expert) {
+  const section = el('expertSettingsSection');
+  if (section) section.hidden = !expert;
+}
 
 function syncModeUI(mode) {
   modalMode = mode;
@@ -2096,13 +2125,27 @@ async function openSettingsModal() {
   const s = await getSettings();
   for (const name of SETTING_FIELDS) {
     const field = form.elements[name];
-    if (field.type === 'checkbox') field.checked = Boolean(s[name]);
+    if (field.type === 'checkbox') field.checked = name === 'aiEnabled' ? s[name] !== false : Boolean(s[name]);
     else field.value = s[name] || '';
   }
+  syncAiEnabledUI(s.aiEnabled !== false);
+  syncExpertModeUI(Boolean(s.expertMode));
   syncModeUI(s.providerMode);
   syncRoutingCards(s.providerRouting || 'auto');
   if (!modal.open) modal.showModal();
 }
+
+form.elements.expertMode?.addEventListener('change', (e) => {
+  syncExpertModeUI(e.target.checked);
+});
+
+el('aiToggleBtn')?.addEventListener('click', async () => {
+  const next = !aiEnabledState;
+  await saveSettings({ aiEnabled: next });
+  syncAiEnabledUI(next);
+  renderCatalogGrid();
+  setBanner(next ? 'AI enabled.' : 'AI disabled. Local recording, slides, and exports stay active.');
+});
 
 for (const card of form.querySelectorAll('.route-card')) {
   card.addEventListener('click', () => syncRoutingCards(card.dataset.route));
@@ -2196,6 +2239,8 @@ form.addEventListener('submit', async (e) => {
     }
   }
   await saveSettings(patch);
+  syncAiEnabledUI(patch.aiEnabled !== false);
+  renderCatalogGrid();
   modal.close();
 });
 
@@ -2467,6 +2512,8 @@ window.addEventListener('hashchange', () => {
 });
 
 async function init() {
+  const settings = await getSettings();
+  syncAiEnabledUI(settings.aiEnabled !== false);
   const contexts = chrome.runtime?.getContexts
     ? await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] })
     : [];
